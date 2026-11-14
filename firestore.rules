@@ -1,0 +1,181 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidCloudProject(data) {
+      return data.userId is string &&
+             data.userId.size() >= 1 &&
+             data.userId.size() <= 128 &&
+             data.userId == request.auth.uid &&
+             data.title is string &&
+             data.title.size() >= 1 &&
+             data.title.size() <= 100 &&
+             data.aspectRatio is string &&
+             data.aspectRatio.size() >= 1 &&
+             data.aspectRatio.size() <= 20 &&
+             data.durationMs is int &&
+             data.durationMs >= 0 &&
+             data.durationMs <= 86400000 &&
+             data.clipCount is int &&
+             data.clipCount >= 0 &&
+             data.clipCount <= 10000 &&
+             data.activeFilterPreset is string &&
+             data.activeFilterPreset.size() >= 1 &&
+             data.activeFilterPreset.size() <= 60 &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    function isValidCreatorAnalytics(data) {
+      return data.userId is string &&
+             data.userId.size() >= 1 &&
+             data.userId.size() <= 128 &&
+             data.userId == request.auth.uid &&
+             data.displayName is string &&
+             data.displayName.size() >= 1 &&
+             data.displayName.size() <= 80 &&
+             data.totalProjectsCount is int &&
+             data.totalProjectsCount >= 0 &&
+             data.totalProjectsCount <= 100000 &&
+             data.exportedVideosCount is int &&
+             data.exportedVideosCount >= 0 &&
+             data.exportedVideosCount <= 100000 &&
+             data.totalTimelineDurationMs is int &&
+             data.totalTimelineDurationMs >= 0 &&
+             data.totalTimelineDurationMs <= 31536000000 &&
+             data.favoriteFilterPreset is string &&
+             data.favoriteFilterPreset.size() >= 1 &&
+             data.favoriteFilterPreset.size() <= 60 &&
+             data.cloudStorageUsedKb is int &&
+             data.cloudStorageUsedKb >= 0 &&
+             data.cloudStorageUsedKb <= 1073741824 &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    match /users/{userId}/projects/{projectId} {
+      allow get: if isOwner(userId) && isValidId(userId) && isValidId(projectId);
+      allow list: if isOwner(userId) && existing().userId == request.auth.uid;
+
+      allow create: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       isValidId(projectId) &&
+                       incoming().keys().hasAll([
+                         'userId',
+                         'title',
+                         'aspectRatio',
+                         'durationMs',
+                         'clipCount',
+                         'activeFilterPreset',
+                         'createdAt',
+                         'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId',
+                         'title',
+                         'aspectRatio',
+                         'durationMs',
+                         'clipCount',
+                         'activeFilterPreset',
+                         'createdAt',
+                         'updatedAt'
+                       ]) &&
+                       isValidCloudProject(incoming());
+
+      allow update: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       isValidId(projectId) &&
+                       isValidCloudProject(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'title',
+                         'aspectRatio',
+                         'durationMs',
+                         'clipCount',
+                         'activeFilterPreset',
+                         'updatedAt'
+                       ]);
+
+      allow delete: if isOwner(userId) && isValidId(userId) && isValidId(projectId) && existing().userId == request.auth.uid;
+    }
+
+    match /users/{userId}/analytics/{analyticsId} {
+      allow get: if isOwner(userId) && isValidId(userId) && isValidId(analyticsId);
+      allow list: if isOwner(userId) && existing().userId == request.auth.uid;
+
+      allow create: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       isValidId(analyticsId) &&
+                       incoming().keys().hasAll([
+                         'userId',
+                         'displayName',
+                         'totalProjectsCount',
+                         'exportedVideosCount',
+                         'totalTimelineDurationMs',
+                         'favoriteFilterPreset',
+                         'cloudStorageUsedKb',
+                         'createdAt',
+                         'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId',
+                         'displayName',
+                         'totalProjectsCount',
+                         'exportedVideosCount',
+                         'totalTimelineDurationMs',
+                         'favoriteFilterPreset',
+                         'cloudStorageUsedKb',
+                         'createdAt',
+                         'updatedAt'
+                       ]) &&
+                       isValidCreatorAnalytics(incoming());
+
+      allow update: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       isValidId(analyticsId) &&
+                       isValidCreatorAnalytics(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'displayName',
+                         'totalProjectsCount',
+                         'exportedVideosCount',
+                         'totalTimelineDurationMs',
+                         'favoriteFilterPreset',
+                         'cloudStorageUsedKb',
+                         'updatedAt'
+                       ]);
+
+      allow delete: if isOwner(userId) && isValidId(userId) && isValidId(analyticsId) && existing().userId == request.auth.uid;
+    }
+  }
+}

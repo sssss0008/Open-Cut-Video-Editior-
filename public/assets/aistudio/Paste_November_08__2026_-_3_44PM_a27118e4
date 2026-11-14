@@ -1,0 +1,1774 @@
+# ULTIMATE VIDEO EDITOR – NEXT-GENERATION ADVANCED FEATURE UPGRADE
+## Modern AI Video Editing, Professional Post-Production, Motion Graphics, Automation and Creative Studio
+
+I already have an Android video editing application developed using Kotlin. I have implemented the previous video editor features and now want to take the application to a completely new level.
+
+Your task is to upgrade my EXISTING application with genuinely new, modern, advanced and innovative features.
+
+I want this application to become an extremely powerful mobile video editing platform that offers professional capabilities inspired by desktop editing software while introducing intelligent AI workflows and mobile-first innovations.
+
+**IMPORTANT PROJECT INSTRUCTIONS**
+
+1. Inspect my existing Android Studio project before modifying anything.
+2. Identify all features that are already implemented.
+3. Do not rebuild the application from scratch.
+4. Do not remove existing working features.
+5. Do not waste time implementing features that already exist.
+6. Focus on new capabilities, advanced improvements, deeper functionality and professional workflows.
+7. Reuse existing components, services, editing engines and architecture wherever appropriate.
+8. Implement real functionality instead of creating buttons that do nothing.
+9. Do not use fake AI functionality or pretend that an operation has been completed when it has not.
+10. Make all new features integrate properly with the existing project, timeline, rendering engine, project files and export system.
+
+The goal is to turn this application into a modern professional creative studio.
+
+---
+
+# 1. AI EDITING INTELLIGENCE CENTER
+
+Create an advanced AI editing center that helps users edit videos using natural language and intelligent analysis.
+
+### AI editing assistant
+Allow users to enter instructions such as:
+
+- Remove unnecessary pauses.
+- Create a 30-second promotional video.
+- Make this video look cinematic.
+- Create a YouTube intro.
+- Generate a short-form video from this footage.
+- Find the most interesting moments.
+- Make the video suitable for Instagram Reels.
+- Add subtitles.
+- Improve audio quality.
+- Remove background noise.
+- Create a highlight montage.
+- Find and remove repeated scenes.
+- Make the video more engaging.
+
+The assistant should understand the editing project and perform supported operations through actual editing commands.
+
+### AI project understanding
+- Analyze imported footage.
+- Identify people, objects and environments where supported.
+- Detect important moments.
+- Understand scene changes.
+- Identify speech and dialogue.
+- Detect silence and pauses.
+- Analyze video orientation.
+- Identify potential highlights.
+- Suggest editing improvements.
+- Generate an editable proposed timeline.
+
+### AI editing workflow
+1. User imports footage.
+2. AI analyzes the footage.
+3. AI presents editing suggestions.
+4. User selects the desired suggestions.
+5. AI creates an editable timeline or applies approved changes.
+6. User can modify every AI-generated edit manually.
+
+Never allow AI to overwrite the original project without confirmation.
+
+### AI editing presets
+- Cinematic storytelling.
+- Travel vlog.
+- Gaming montage.
+- Product advertisement.
+- Educational video.
+- Podcast highlights.
+- Interview editing.
+- Music video.
+- Documentary.
+- YouTube Shorts.
+- Instagram Reels.
+- TikTok videos.
+- Corporate presentation.
+
+---
+
+# 2. TRANSCRIPT-BASED VIDEO EDITING
+
+Introduce professional text-based editing.
+
+### Speech-to-text timeline
+- Automatically transcribe video dialogue.
+- Display the transcript alongside the timeline.
+- Synchronize every word or sentence with its timestamp.
+- Highlight the currently playing sentence.
+- Allow users to search spoken words.
+- Jump directly to a spoken phrase.
+- Select transcript sections to select their corresponding timeline regions.
+
+### Edit video through text
+- Delete selected spoken sentences.
+- Remove unwanted dialogue.
+- Cut pauses between sentences.
+- Rearrange supported dialogue sections.
+- Create clips from selected transcript passages.
+- Automatically generate subtitles from the transcript.
+- Correct transcription mistakes.
+- Identify multiple speakers.
+- Create speaker labels.
+- Generate chapters from dialogue.
+
+### Advanced transcript tools
+- Search across all imported clips.
+- Find repeated phrases.
+- Detect filler words such as "um" and "uh".
+- Identify long pauses.
+- Create a summary of the video.
+- Generate a title and description.
+- Generate a chapter list.
+- Translate the transcript.
+- Export SRT, VTT and supported subtitle formats.
+
+Maintain precise synchronization between transcript edits, audio, video and captions.
+
+---
+
+# 3. MULTICAMERA EDITING STUDIO
+
+Add a professional multicamera editing environment.
+
+### Features
+- Import multiple camera recordings.
+- Synchronize footage using audio waveforms.
+- Synchronize using timestamps where reliable.
+- Create multicamera groups.
+- Preview multiple camera angles.
+- Switch camera angles during playback.
+- Create multicamera sequences.
+- Manually adjust synchronization.
+- Replace camera angles without rebuilding the entire edit.
+- Preserve audio synchronization.
+
+### Advanced options
+- Multicamera angle grid.
+- Active-camera selection.
+- Audio-source selection.
+- Camera angle labels.
+- Camera grouping.
+- Camera-specific color correction.
+- Multicamera editing keyboard shortcuts.
+- Multi-angle preview.
+
+The multicamera workflow should support long recordings without loading every original video into memory.
+
+---
+
+# 4. ADVANCED AI SCENE AND SHOT INTELLIGENCE
+
+Develop an intelligent scene analysis engine.
+
+### Automatic scene detection
+- Detect hard cuts.
+- Detect gradual transitions.
+- Detect changes in camera angle.
+- Detect significant visual changes.
+- Detect repeated footage.
+- Detect black frames.
+- Detect blank sections.
+- Detect unusually long static shots.
+
+### Shot analysis
+- Identify close-up shots.
+- Identify wide shots.
+- Identify medium shots.
+- Detect camera movement.
+- Detect possible shaky footage.
+- Estimate shot duration.
+- Identify potential B-roll.
+- Find visually similar scenes.
+
+### Smart scene management
+- Automatically divide long videos into scenes.
+- Generate scene thumbnails.
+- Create searchable scene collections.
+- Label scenes.
+- Add scene markers.
+- Group related shots.
+- Suggest the best shot order.
+
+Allow users to accept, reject or adjust every automated result.
+
+---
+
+# 5. ADVANCED AI AUTO-REFRAMING
+
+Create an intelligent aspect-ratio conversion engine.
+
+### Supported outputs
+- 16:9 landscape.
+- 9:16 portrait.
+- 1:1 square.
+- 4:5 portrait.
+- 4:3.
+- Custom dimensions.
+
+### Intelligent reframing
+- Track the main subject.
+- Keep faces within the safe area.
+- Follow moving subjects.
+- Detect multiple people.
+- Select the most relevant subject.
+- Keep important objects visible.
+- Smoothly animate crop movement.
+- Avoid abrupt camera movements.
+- Support manual crop correction.
+
+### Social media conversion
+Convert one landscape video into multiple formats automatically.
+
+For example:
+- YouTube landscape.
+- Instagram Reels.
+- TikTok.
+- YouTube Shorts.
+- Square social media video.
+
+Generate independent editable versions rather than permanently modifying the original project.
+
+---
+
+# 6. ADVANCED OBJECT AND SUBJECT EDITING
+
+Introduce AI-powered object recognition and editing tools.
+
+### Object selection
+- Select people.
+- Select objects.
+- Select vehicles.
+- Select foreground subjects.
+- Select background regions.
+- Select specific visual areas.
+
+### Advanced editing
+- Remove unwanted objects.
+- Replace selected backgrounds.
+- Blur selected objects.
+- Track objects throughout a clip.
+- Apply effects to selected subjects.
+- Change subject brightness.
+- Apply selective color correction.
+- Create subject masks.
+- Separate foreground and background.
+
+### Object tracking
+- Point tracking.
+- Planar tracking.
+- Subject tracking.
+- Face tracking.
+- Motion tracking.
+- Tracking stabilization.
+- Tracking-based text placement.
+
+Allow users to correct tracking points manually when automatic tracking fails.
+
+---
+
+# 7. PROFESSIONAL ROTOSCOPING AND MASKING STUDIO
+
+Develop a more powerful masking system.
+
+### Mask types
+- Rectangle mask.
+- Circle mask.
+- Ellipse mask.
+- Polygon mask.
+- Freehand mask.
+- Bézier mask.
+- Brush mask.
+- AI subject mask.
+- Face mask.
+- Object mask.
+- Gradient mask.
+
+### Advanced mask controls
+- Feather.
+- Expansion.
+- Opacity.
+- Invert.
+- Mask tracking.
+- Keyframe animation.
+- Edge refinement.
+- Mask combination.
+- Multiple masks per clip.
+- Animated mask paths.
+
+### Professional effects
+- Background replacement.
+- Subject isolation.
+- Selective blur.
+- Selective color grading.
+- Light effects.
+- Spotlight effects.
+- Focus effects.
+- Moving text behind a person.
+
+Support editable masks and non-destructive adjustments.
+
+---
+
+# 8. ADVANCED MOTION GRAPHICS AND ANIMATION
+
+Expand the existing motion graphics capabilities.
+
+### Motion graphics editor
+- Create animated text.
+- Animate shapes.
+- Create motion paths.
+- Animate images.
+- Animate logos.
+- Animate icons.
+- Animate lower thirds.
+- Create title sequences.
+- Create animated charts.
+- Create infographic animations.
+- Create social media motion graphics.
+
+### Advanced animation controls
+- Position.
+- Rotation.
+- Scale.
+- Anchor point.
+- Opacity.
+- Skew.
+- Perspective.
+- Transform.
+- Motion path.
+- Bezier handles.
+- Easing curves.
+- Animation presets.
+- Motion blur.
+
+### Animation presets
+- Smooth entrance.
+- Bounce.
+- Slide.
+- Zoom.
+- Rotate.
+- Fade.
+- Typewriter.
+- Glitch.
+- Kinetic typography.
+- Elastic movement.
+- Parallax.
+- Cinematic reveal.
+
+Provide a graph-based animation editor with keyframes and editable curves.
+
+---
+
+# 9. ADVANCED 3D TITLE AND TEXT STUDIO
+
+Build a professional text and typography environment.
+
+### Text capabilities
+- 3D text.
+- Extrusion.
+- Depth.
+- Bevel.
+- Metallic text.
+- Glass text.
+- Neon text.
+- Gradient text.
+- Animated text.
+- Perspective text.
+- Curved text.
+- Rotating text.
+- Text along a path.
+
+### Typography controls
+- Font family.
+- Font weight.
+- Letter spacing.
+- Line spacing.
+- Alignment.
+- Stroke.
+- Shadow.
+- Glow.
+- Background.
+- Gradient.
+- Opacity.
+- Text animation.
+- Text tracking.
+
+### Advanced features
+- Import supported fonts.
+- Manage font collections.
+- Create text presets.
+- Save custom styles.
+- Create reusable title templates.
+- Animate individual words.
+- Animate individual characters.
+- Support right-to-left and multilingual text.
+
+Use GPU-based rendering where appropriate and provide a fallback for unsupported devices.
+
+---
+
+# 10. ADVANCED CINEMATIC COLOR SCIENCE
+
+Upgrade color grading beyond ordinary filters.
+
+### Professional color tools
+- RGB curves.
+- Luma curves.
+- Hue curves.
+- Hue vs Hue.
+- Hue vs Saturation.
+- Hue vs Luminance.
+- Color wheels.
+- Lift.
+- Gamma.
+- Gain.
+- Offset.
+- Temperature.
+- Tint.
+- Exposure.
+- Contrast.
+- Saturation.
+- Vibrance.
+- Highlight recovery where possible.
+- Shadow adjustments.
+- White balance.
+
+### Advanced grading
+- Secondary color correction.
+- Skin-tone correction.
+- Qualifiers.
+- Power windows.
+- Tracking windows.
+- Multiple grading nodes.
+- Node-based color workflow.
+- Group grading.
+- Adjustment layers.
+- Copy and paste grades.
+- Grade presets.
+
+### Professional monitoring
+- RGB parade.
+- Waveform monitor.
+- Vectorscope.
+- Histogram.
+- Luma waveform.
+- Clipping warnings.
+- Highlight and shadow warnings.
+- Skin-tone reference guides.
+
+### Color management
+- Color-space metadata handling.
+- Rec.709 workflows.
+- Supported HDR workflows.
+- Log footage handling where supported.
+- LUT management.
+- 3D LUT support.
+- LUT intensity.
+- LUT preview.
+- Color-space conversion.
+- Display-aware preview.
+
+Never claim HDR or professional color accuracy if the source, display, decoding or rendering pipeline cannot support it.
+
+---
+
+# 11. ADVANCED AI AUDIO POST-PRODUCTION
+
+Build a professional audio intelligence studio.
+
+### AI audio cleanup
+- Speech enhancement.
+- Background noise reduction.
+- Wind noise reduction.
+- Hum removal.
+- Echo reduction.
+- Reverb reduction.
+- Click and pop removal.
+- Voice isolation.
+- Dialogue enhancement.
+- Automatic loudness adjustment.
+
+### Audio intelligence
+- Detect speech.
+- Detect music.
+- Detect sound effects.
+- Detect silence.
+- Detect clipping.
+- Detect sudden volume changes.
+- Identify overlapping dialogue.
+- Suggest audio improvements.
+
+### Advanced mixing
+- Multitrack audio mixer.
+- Parametric equalizer.
+- Compressor.
+- Limiter.
+- Noise gate.
+- De-esser.
+- Reverb.
+- Delay.
+- Stereo width.
+- Pan.
+- Volume automation.
+- Sidechain ducking.
+- Track grouping.
+- Bus routing.
+- Audio effects chains.
+
+### Advanced audio features
+- Automatic dialogue ducking.
+- Voice and music separation where supported.
+- Beat detection.
+- Beat markers.
+- Beat-synchronized editing.
+- Automatic music fade.
+- Audio waveform editing.
+- Audio normalization.
+- Loudness measurement.
+- Audio channel mapping.
+
+Provide a proper audio preview and avoid destructive processing of original files.
+
+---
+
+# 12. MUSIC AND BEAT-SYNCHRONIZED EDITING
+
+Build a dedicated music-driven editing system.
+
+### Features
+- Analyze music tracks.
+- Detect beats.
+- Detect tempo.
+- Detect downbeats where supported.
+- Detect musical sections.
+- Generate beat markers.
+- Suggest cut positions.
+- Synchronize transitions to beats.
+- Match effects to rhythm.
+- Create music-driven montages.
+- Adjust clip duration to match music.
+
+### Music editing
+- Trim music.
+- Loop music.
+- Crossfade music.
+- Adjust volume.
+- Apply fade in and fade out.
+- Align multiple music tracks.
+- Create audio transitions.
+- Preview beat markers on the timeline.
+
+### Smart montage
+Allow users to select clips and a music track. Generate an editable montage using detected beats and user-selected duration.
+
+Only use audio assets that the user owns, has licensed, or is otherwise authorized to use.
+
+---
+
+# 13. ADVANCED VIDEO EFFECTS ENGINE
+
+Create a professional real-time effects system.
+
+### Visual effects
+- Motion blur.
+- Directional blur.
+- Gaussian blur.
+- Lens blur.
+- Radial blur.
+- Glow.
+- Bloom.
+- Chromatic aberration.
+- Lens distortion.
+- Film grain.
+- Vignette.
+- Sharpen.
+- Noise.
+- Glitch.
+- RGB split.
+- Pixelation.
+- Mosaic.
+- Halftone.
+- Edge detection.
+- Emboss.
+- Distortion.
+- Heatwave.
+- Light leaks.
+- Lens flare.
+- VHS.
+- Retro film.
+- Digital noise.
+
+### Advanced effect controls
+- Effect intensity.
+- Effect masking.
+- Effect keyframes.
+- Effect tracking.
+- Effect stacking.
+- Effect blending.
+- Effect ordering.
+- Effect presets.
+- Effect copy and paste.
+- Effect comparison.
+- Before and after preview.
+
+### Effect performance
+- GPU accelerated effects.
+- Effect caching.
+- Preview quality controls.
+- Background rendering.
+- Low-resolution preview.
+- Full-resolution export rendering.
+
+---
+
+# 14. ADVANCED TRANSITIONS STUDIO
+
+Create a dedicated transition editor.
+
+### Transition categories
+- Cinematic.
+- Camera movement.
+- Zoom.
+- Spin.
+- Swipe.
+- Shape.
+- Mask.
+- Light.
+- Glitch.
+- Distortion.
+- Blur.
+- Film.
+- 3D.
+- Seamless transitions.
+
+### Advanced transition controls
+- Duration.
+- Direction.
+- Speed.
+- Easing.
+- Intensity.
+- Motion blur.
+- Color.
+- Mask.
+- Custom transition parameters.
+
+### Custom transitions
+Allow users to combine supported effects, masks, transforms and animation curves to create their own reusable transitions.
+
+---
+
+# 15. ADVANCED VIDEO SPEED AND TEMPORAL EFFECTS
+
+Build a professional speed editing system.
+
+### Speed controls
+- Constant speed.
+- Variable speed.
+- Speed ramp.
+- Reverse playback.
+- Freeze frame.
+- Frame hold.
+- Time remapping.
+- Slow motion.
+- Fast motion.
+- Custom speed curves.
+
+### Advanced processing
+- Optical-flow interpolation where supported.
+- Frame blending.
+- Motion-compensated interpolation.
+- Frame duplication.
+- Frame removal.
+- Smooth speed transitions.
+- Audio pitch preservation.
+- Audio stretching.
+
+Allow users to inspect the generated frames and preview quality before exporting.
+
+---
+
+# 16. AI VIDEO ENHANCEMENT AND RESTORATION
+
+Introduce advanced video improvement tools.
+
+### Enhancement features
+- AI upscaling where supported.
+- Video denoising.
+- Low-light enhancement.
+- Sharpening.
+- Compression artifact reduction.
+- Detail enhancement.
+- Face enhancement where appropriate.
+- Color restoration.
+- Deinterlacing.
+- Stabilization.
+- Motion smoothing.
+
+### Old video restoration
+- Improve faded colors.
+- Reduce noise.
+- Improve contrast.
+- Reduce compression artifacts.
+- Stabilize shaky footage.
+- Repair supported visual defects.
+
+### Processing controls
+- Original vs enhanced comparison.
+- Strength adjustment.
+- Processing preview.
+- Export quality selection.
+- Hardware capability detection.
+
+Do not promise genuine 4K detail reconstruction from low-resolution footage. Clearly distinguish AI enhancement from actual source resolution.
+
+---
+
+# 17. ADVANCED SCREEN RECORDING AND CAPTURE STUDIO
+
+Expand video capture capabilities.
+
+### Screen recording
+- Record screen.
+- Record microphone.
+- Record device audio where Android permits.
+- Record screen and front camera together.
+- Show touch indicators.
+- Adjustable resolution.
+- Frame-rate selection.
+- Recording timer.
+- Pause and resume.
+- Recording notifications.
+- Save recordings directly into the media library.
+
+Use Android MediaProjection permissions and follow current Android restrictions.
+
+### Camera recording
+- Camera preview.
+- Manual focus where supported.
+- Exposure controls where supported.
+- White balance.
+- Frame-rate selection.
+- Resolution selection.
+- Front and rear camera switching.
+- Microphone selection.
+- Recording stabilization where supported.
+- External camera support where supported.
+
+Use CameraX and appropriate device capability checks.
+
+---
+
+# 18. MULTI-LAYER COMPOSITING AND ADVANCED COMPOSITION
+
+Expand the existing timeline into a more sophisticated compositing environment.
+
+### Advanced layer types
+- Video layers.
+- Audio layers.
+- Text layers.
+- Image layers.
+- Shape layers.
+- Adjustment layers.
+- Effect layers.
+- Mask layers.
+- Solid-color layers.
+- Generated graphic layers.
+
+### Advanced compositing
+- Blend modes.
+- Alpha compositing.
+- Luma compositing.
+- Track mattes.
+- Alpha mattes.
+- Adjustment layers.
+- Compound clips.
+- Nested sequences.
+- Pre-compositions.
+- Layer grouping.
+- Layer locking.
+- Layer visibility.
+- Layer solo.
+- Layer labels.
+- Layer organization.
+
+### Professional workflow
+- Timeline markers.
+- Sequence markers.
+- In and out points.
+- Ripple editing.
+- Roll editing.
+- Slip editing.
+- Slide editing.
+- Snapping.
+- Magnetic timeline options.
+- Track targeting.
+- Linked clips.
+- Sync lock.
+- Track locking.
+
+Preserve the non-destructive editing model and ensure the compositor respects the project structure.
+
+---
+
+# 19. ADVANCED AI SUBTITLE AND LANGUAGE STUDIO
+
+Create a complete multilingual subtitle workflow.
+
+### Automatic subtitles
+- Speech recognition.
+- Word-level timestamps where supported.
+- Sentence-level timestamps.
+- Speaker identification.
+- Automatic punctuation.
+- Subtitle segmentation.
+- Subtitle correction.
+- Subtitle styling.
+
+### Translation
+- Translate subtitles into supported languages.
+- Maintain timing.
+- Allow manual translation correction.
+- Compare original and translated versions.
+- Support multilingual subtitle tracks.
+- Generate bilingual subtitles.
+
+### Advanced subtitle styling
+- Animated captions.
+- Word-by-word highlighting.
+- Karaoke captions.
+- Speaker colors.
+- Background boxes.
+- Text outlines.
+- Shadows.
+- Caption positioning.
+- Caption safe areas.
+- Animated entrance and exit.
+
+### Export
+- Burned-in subtitles.
+- Separate SRT.
+- VTT.
+- Supported subtitle formats.
+- Embedded subtitle tracks when supported by the output container and codec.
+
+Do not claim all 130 languages or any specific speech model is available unless the integrated model actually supports them.
+
+---
+
+# 20. AI SCRIPT, STORYBOARD AND VIDEO PLANNING
+
+Create an intelligent pre-production studio.
+
+### AI script generation
+- Generate video scripts.
+- Create scene descriptions.
+- Generate introductions.
+- Generate endings.
+- Generate voice-over scripts.
+- Create educational scripts.
+- Create advertisement scripts.
+- Generate short-form content ideas.
+- Create shot lists.
+
+### Storyboard
+- Create scene cards.
+- Add reference images.
+- Add camera instructions.
+- Add dialogue.
+- Add estimated scene duration.
+- Rearrange scenes.
+- Connect storyboard scenes to timeline clips.
+
+### Script-to-timeline
+Allow users to import a script and connect selected footage to individual scenes.
+
+Create an editable draft timeline from the script and available media. Never claim to generate missing original footage unless a real authorized video-generation service is integrated.
+
+---
+
+# 21. ADVANCED VIDEO TEMPLATE AND BRAND STUDIO
+
+Build a reusable design and branding system.
+
+### Brand kit
+- Brand logos.
+- Brand colors.
+- Typography.
+- Intro templates.
+- Outro templates.
+- Lower thirds.
+- Watermarks.
+- End screens.
+- Social media templates.
+
+### Reusable templates
+- YouTube intro.
+- YouTube outro.
+- Podcast layout.
+- Interview layout.
+- Product promotion.
+- Business advertisement.
+- Educational video.
+- News video.
+- Documentary.
+- Gaming video.
+- Travel vlog.
+- Social media short.
+
+### Template controls
+- Replace media.
+- Change text.
+- Change logo.
+- Change colors.
+- Change duration.
+- Adjust animation.
+- Save custom templates.
+- Duplicate templates.
+- Import supported templates.
+
+Templates should preserve editable layers rather than flattening everything into one video.
+
+---
+
+# 22. ADVANCED PROJECT MANAGEMENT
+
+Improve professional project organization.
+
+### Project library
+- Project folders.
+- Project categories.
+- Search.
+- Filters.
+- Sort by date.
+- Sort by name.
+- Recent projects.
+- Favorite projects.
+- Project thumbnails.
+- Project duration.
+- Project resolution.
+- Last edited time.
+
+### Project management
+- Duplicate project.
+- Rename project.
+- Archive project.
+- Restore archived project.
+- Project version history.
+- Automatic backups.
+- Manual snapshots.
+- Restore previous versions.
+- Project recovery.
+- Missing media detection.
+- Relink media.
+- Collect project media.
+- Project cleanup.
+
+### Advanced project versions
+Allow users to save named versions such as:
+- First Cut.
+- Rough Cut.
+- Color Version.
+- Final Version.
+- Social Version.
+
+Do not overwrite previous versions without permission.
+
+---
+
+# 23. PROFESSIONAL MEDIA AND ASSET MANAGEMENT
+
+Create an intelligent media management center.
+
+### Media browser
+- Video library.
+- Audio library.
+- Image library.
+- Font library.
+- LUT library.
+- Effects library.
+- Transition library.
+- Template library.
+
+### Media intelligence
+- Automatic thumbnails.
+- Waveform generation.
+- Proxy generation.
+- Metadata extraction.
+- Resolution detection.
+- Frame-rate detection.
+- Codec information.
+- Duration.
+- File size.
+- Orientation.
+- Audio channel information.
+
+### Smart collections
+- Recently imported.
+- Recently edited.
+- Large files.
+- Short clips.
+- Long recordings.
+- Portrait footage.
+- Landscape footage.
+- Audio-only files.
+- Unused assets.
+- Missing media.
+- Favorites.
+
+### Media management
+- Search.
+- Tag.
+- Rename.
+- Group.
+- Filter.
+- Sort.
+- Replace source media.
+- Relink missing assets.
+- Generate proxies.
+- Delete unused cache files safely.
+
+Never delete original media automatically.
+
+---
+
+# 24. ADVANCED PROXY AND PERFORMANCE STUDIO
+
+Create a professional performance management system.
+
+### Proxy features
+- Generate proxy files.
+- Select proxy resolution.
+- Select proxy codec.
+- Automatic proxy generation.
+- Proxy progress.
+- Proxy relinking.
+- Switch between proxy and original.
+- Per-project proxy settings.
+
+### Preview performance
+- Full resolution.
+- Half resolution.
+- Quarter resolution.
+- Custom preview quality.
+- Frame skipping options.
+- Background rendering.
+- Cached preview frames.
+- Timeline render indicators.
+
+### Performance dashboard
+Display:
+- CPU usage where available.
+- Memory usage where available.
+- GPU capability information where available.
+- Storage availability.
+- Proxy storage.
+- Cache storage.
+- Export progress.
+- Estimated processing requirements.
+
+Avoid misleading hardware readings when Android does not expose them.
+
+---
+
+# 25. ADVANCED EXPORT AND DELIVERY STUDIO
+
+Create a professional delivery environment.
+
+### Export formats
+Support formats that the device's encoder and integrated media libraries can actually produce.
+
+Potential formats:
+- MP4.
+- WebM.
+- Supported MOV workflows.
+- Audio-only export.
+- GIF where supported.
+- Image sequence export where practical.
+
+### Video codecs
+- H.264.
+- H.265/HEVC where supported.
+- AV1 where supported.
+- VP9 where supported.
+
+### Export resolutions
+- 360p.
+- 480p.
+- 720p.
+- 1080p.
+- 1440p.
+- 4K where supported.
+- Custom resolution within device limits.
+
+### Export controls
+- Frame rate.
+- Bitrate.
+- Variable or constant bitrate where supported.
+- Codec profile where supported.
+- Audio bitrate.
+- Audio sample rate.
+- Audio channels.
+- Color-space options.
+- HDR options where supported.
+- Keyframe interval where supported.
+- File size estimate.
+- Export destination.
+
+### Advanced export
+- Batch export.
+- Export multiple aspect ratios.
+- Export selected timeline range.
+- Export individual clips.
+- Export audio only.
+- Export with or without subtitles.
+- Export with transparent background when the entire pipeline supports it.
+- Export custom presets.
+
+### Export quality analysis
+- Detect clipping.
+- Detect black frames.
+- Detect missing media.
+- Detect audio peaks.
+- Check subtitle safe areas.
+- Verify output duration.
+- Verify final file.
+- Offer a preview before sharing.
+
+### Social media delivery
+Create editable export presets for:
+- YouTube.
+- YouTube Shorts.
+- Instagram Reels.
+- Instagram feed.
+- TikTok.
+- Facebook.
+- X.
+- WhatsApp.
+- Custom platforms.
+
+Do not guarantee that every platform will accept every export configuration.
+
+---
+
+# 26. ADVANCED COLLABORATION AND CLOUD WORKFLOWS
+
+Introduce optional online collaboration.
+
+### Cloud projects
+- Back up projects.
+- Sync project settings.
+- Sync project metadata.
+- Store approved project assets.
+- Restore projects on another device.
+- Track synchronization status.
+
+### Collaboration
+- Invite collaborators.
+- Share project access.
+- Assign editing roles.
+- Share comments.
+- Add timeline comments.
+- Review project versions.
+- Compare revisions.
+- Approve or reject changes.
+
+### Review system
+- Share review links.
+- Add timestamped comments.
+- Mark revisions.
+- Resolve comments.
+- Track review status.
+
+### Conflict handling
+- Prevent silent project overwrites.
+- Maintain version history.
+- Handle offline editing.
+- Resolve conflicting edits safely.
+- Clearly show which version is current.
+
+Cloud collaboration must be optional. The app must remain useful without an account or internet connection.
+
+---
+
+# 27. PLUGIN AND CREATIVE EXTENSION SYSTEM
+
+Create a modular extension architecture for future features.
+
+### Extension categories
+- Effects.
+- Transitions.
+- Text templates.
+- Motion graphics.
+- Audio processing.
+- LUT packs.
+- Export profiles.
+- Media tools.
+- AI processing modules.
+
+### Plugin management
+- Browse extensions.
+- Install supported extensions.
+- Update extensions.
+- Disable extensions.
+- Remove extensions.
+- Preview extensions.
+- Manage permissions.
+
+Use a controlled and secure extension format. Do not execute arbitrary downloaded code.
+
+Build the architecture so future features can be added without changing the core editing engine.
+
+---
+
+# 28. ADVANCED ACCESSIBILITY AND CREATOR EXPERIENCE
+
+Add features that make professional editing comfortable on mobile.
+
+### Input support
+- External keyboard shortcuts.
+- Bluetooth keyboard support.
+- Mouse support.
+- Trackpad support.
+- Stylus support.
+- Touch gestures.
+- External display support where practical.
+
+### Mobile and tablet layouts
+- Phone portrait layout.
+- Phone landscape layout.
+- Tablet workspace.
+- Foldable device layouts.
+- External display workspace.
+
+### Professional workspace
+- Customizable panels.
+- Resizable timeline.
+- Collapsible media browser.
+- Floating preview.
+- Full-screen preview.
+- Adjustable workspace.
+- Save workspace layouts.
+- Restore default workspace.
+
+### Accessibility
+- Adjustable text size.
+- High contrast.
+- Screen-reader labels.
+- Reduced motion.
+- Colorblind-friendly controls.
+- Custom keyboard shortcuts.
+- Clear focus indicators.
+
+---
+
+# 29. ADVANCED EDITING AUTOMATION
+
+Create a system for reusable automated editing workflows.
+
+### Automation examples
+- Import media and generate thumbnails.
+- Generate proxies automatically.
+- Analyze all imported clips.
+- Detect scenes.
+- Generate transcripts.
+- Create subtitles.
+- Create a rough-cut timeline.
+- Apply a selected color preset.
+- Normalize dialogue.
+- Create multiple aspect-ratio versions.
+- Export multiple versions.
+
+### Workflow builder
+Allow users to create reusable sequences of editing operations.
+
+Example:
+
+1. Import footage.
+2. Detect scenes.
+3. Remove selected silent sections.
+4. Generate subtitles.
+5. Apply a color preset.
+6. Normalize dialogue.
+7. Export in 1080p.
+
+### Automation controls
+- Enable or disable individual steps.
+- Reorder operations.
+- Save workflows.
+- Duplicate workflows.
+- Run workflows on selected projects.
+- Pause and resume supported operations.
+- Show detailed progress.
+- Report errors.
+- Allow manual review before destructive or final operations.
+
+All automation must be based on actual supported editing operations.
+
+---
+
+# 30. ADVANCED PROJECT QUALITY ASSISTANT
+
+Build an intelligent pre-export quality checker.
+
+Analyze the project for:
+
+- Missing media.
+- Unlinked files.
+- Empty timeline sections.
+- Unexpected black frames.
+- Audio clipping.
+- Very low audio volume.
+- Abrupt audio cuts.
+- Inconsistent aspect ratios.
+- Incorrect frame-rate combinations.
+- Subtitle overflow.
+- Text outside safe areas.
+- Excessively short shots.
+- Accidental gaps.
+- Duplicate clips.
+- Unsupported export settings.
+- Excessive render requirements.
+
+Display a quality report with:
+- Issue description.
+- Timeline location.
+- Severity.
+- Suggested correction.
+- Fix automatically option where safe.
+- Ignore option.
+- Recheck option.
+
+Never modify the timeline automatically without user approval.
+
+---
+
+# 31. AI CONTENT CREATOR STUDIO
+
+Expand the video editor into a content creation workspace.
+
+### Content generation assistance
+- Generate video titles.
+- Generate descriptions.
+- Generate hashtags.
+- Generate video summaries.
+- Generate chapter timestamps.
+- Generate thumbnail concepts.
+- Generate captions.
+- Generate social media post drafts.
+- Generate video hooks.
+- Generate call-to-action suggestions.
+
+### Creator workflow
+- Create multiple versions of a video.
+- Prepare a long-form video.
+- Create short clips from it.
+- Generate captions.
+- Generate titles and descriptions.
+- Create social-media-specific exports.
+- Organize versions in a content calendar.
+
+AI-generated text must remain editable and should never be published automatically without user approval.
+
+---
+
+# 32. NEXT-GENERATION AI VIDEO CREATION INTEGRATION
+
+Prepare an optional architecture for integrating authorized AI video-generation services.
+
+Potential capabilities:
+- Text-to-video generation.
+- Image-to-video generation.
+- Background generation.
+- Animated still images.
+- AI B-roll generation.
+- Visual concept generation.
+- AI scene extensions.
+- AI transition generation.
+
+Requirements:
+- Use real, authorized provider APIs.
+- Make provider availability clear.
+- Display processing costs or usage limits where applicable.
+- Require user approval before paid generation.
+- Store generated assets separately from original media.
+- Allow generated assets to be edited on the timeline.
+- Do not pretend that a generation has occurred when no service is connected.
+
+This should be a modular integration rather than a dependency for normal editing.
+
+---
+
+# 33. DATABASE AND PROJECT ARCHITECTURE
+
+Use a database project named **AI Studio**.
+
+First inspect the current database and architecture. Do not duplicate existing tables or collections unnecessarily.
+
+Recommended local-first architecture:
+
+- Room for projects, editing metadata, media references, timeline state and offline information.
+- DataStore for application preferences.
+- Firebase Authentication for optional accounts.
+- Cloud Firestore for supported cloud synchronization.
+- Firebase Storage for user-approved cloud assets.
+- WorkManager for persistent background jobs.
+- Hilt for dependency injection.
+- Kotlin Coroutines and Flow for asynchronous processing.
+
+Suggested additional entities, only where missing:
+
+**AI editing**
+- ai_editing_jobs
+- ai_editing_suggestions
+- ai_analysis_results
+- ai_scene_detection
+- ai_transcriptions
+- ai_generated_captions
+- ai_auto_reframe_jobs
+
+**Professional workflows**
+- multicamera_groups
+- multicamera_angles
+- storyboard_projects
+- storyboard_scenes
+- automation_workflows
+- automation_steps
+- quality_reports
+- quality_issues
+
+**Creative assets**
+- brand_kits
+- brand_assets
+- custom_templates
+- template_versions
+- plugin_registry
+- custom_effect_presets
+- transition_presets
+- motion_graphics_presets
+
+**Cloud collaboration**
+- shared_projects
+- project_collaborators
+- project_permissions
+- project_comments
+- project_versions
+- sync_operations
+
+**Export**
+- export_jobs
+- export_presets
+- export_history
+- batch_export_jobs
+
+Use database migrations, stable IDs, appropriate indexing and reliable relationships.
+
+Never store original media files as large database blobs. Use safe file references and proper media storage management.
+
+---
+
+# 34. REQUIRED TECHNICAL ARCHITECTURE
+
+Continue using Kotlin and the existing Android project architecture.
+
+Use modern Android development practices where compatible with the existing project.
+
+Potential technologies:
+
+- Kotlin.
+- Jetpack Compose.
+- MVVM or a suitable modular architecture.
+- Kotlin Coroutines.
+- StateFlow and SharedFlow.
+- Room.
+- DataStore.
+- Hilt.
+- WorkManager.
+- Media3.
+- MediaCodec.
+- MediaExtractor.
+- MediaMuxer.
+- CameraX.
+- OpenGL ES.
+- Vulkan where practical.
+- FFmpeg where licensing and integration permit.
+- ML Kit.
+- TensorFlow Lite / LiteRT.
+- Appropriate on-device ML models.
+- Firebase for optional cloud features.
+
+### Important editing-engine requirement
+
+Do not assume that Media3 Transformer alone provides a complete professional non-linear editing engine.
+
+The application must maintain its own editing project model, timeline representation, composition graph, render pipeline, audio processing pipeline, media cache and effect system.
+
+Keep the editing engine modular so new features can be integrated independently.
+
+### GPU and rendering
+- Use GPU acceleration where beneficial.
+- Avoid unnecessary CPU frame copies.
+- Use efficient texture management.
+- Cache preview frames.
+- Support preview-quality adjustment.
+- Avoid rendering the full project at maximum quality during every timeline interaction.
+- Provide a fallback when a device does not support a particular GPU effect.
+
+### AI processing
+- Prefer on-device processing for supported tasks.
+- Use background processing for expensive operations.
+- Respect memory and thermal limitations.
+- Detect device capabilities.
+- Support cancellation.
+- Show progress.
+- Provide fallback options.
+- Do not block the main thread.
+
+### Media reliability
+- Handle variable-frame-rate footage.
+- Handle different audio sample rates.
+- Handle rotation metadata.
+- Handle missing media.
+- Handle unsupported codecs.
+- Preserve synchronization.
+- Handle long recordings.
+- Support safe project recovery.
+
+---
+
+# 35. NEW PROFESSIONAL SCREEN DESIGN
+
+Do not simply add more buttons to the existing interface.
+
+Create a cohesive professional editing workspace.
+
+### Suggested main workspaces
+
+1. Home Studio.
+2. Projects.
+3. Media Library.
+4. Edit Workspace.
+5. AI Studio.
+6. Color Studio.
+7. Audio Studio.
+8. Motion Studio.
+9. Effects Studio.
+10. Subtitle Studio.
+11. Storyboard Studio.
+12. Export Studio.
+13. Cloud and Collaboration.
+14. Settings.
+
+### AI Studio dashboard
+Show:
+- AI editing assistant.
+- Scene analysis.
+- Text-based editing.
+- Automatic subtitles.
+- Smart reframing.
+- Audio enhancement.
+- Video enhancement.
+- Smart montage.
+- AI quality checker.
+- AI script assistant.
+
+### Edit workspace
+Provide:
+- Preview monitor.
+- Advanced timeline.
+- Media browser.
+- Track controls.
+- Inspector panel.
+- Effects panel.
+- Audio mixer.
+- Keyframe controls.
+- Playback controls.
+
+### Tablet workspace
+Use a more desktop-like layout with:
+- Resizable panels.
+- Large preview.
+- Timeline at the bottom.
+- Media browser on the left.
+- Inspector on the right.
+- Optional full-screen playback.
+
+Keep the interface clean, modern, responsive and easy to navigate.
+
+---
+
+# 36. PERFORMANCE, STABILITY AND DEVICE COMPATIBILITY
+
+The application must be designed for real Android hardware.
+
+Requirements:
+- Avoid out-of-memory crashes.
+- Optimize long timelines.
+- Support large media files.
+- Use proxy media.
+- Cache thumbnails and waveforms.
+- Release unused video decoders.
+- Handle device heating.
+- Handle low-storage conditions.
+- Show export estimates where possible.
+- Allow background jobs to be resumed where Android permits.
+- Support interruption recovery.
+- Avoid excessive battery consumption.
+- Test different Android versions.
+- Test different GPU capabilities.
+- Adapt quality to device performance.
+
+Provide a low, balanced and high preview-quality setting.
+
+Do not promise that every phone supports 4K, HDR, AV1, Vulkan, high frame rates or every codec. Detect actual capabilities and clearly communicate limitations.
+
+---
+
+# 37. PRIVACY, SECURITY AND LICENSING
+
+- Process media locally whenever practical.
+- Clearly explain when footage is sent to an external AI service.
+- Obtain consent before uploading media.
+- Never upload private videos silently.
+- Protect cloud projects with access controls.
+- Provide project deletion.
+- Provide account deletion when accounts are supported.
+- Secure API keys through appropriate backend mechanisms.
+- Never embed private provider secrets in the Android application.
+- Respect media permissions.
+- Respect copyright and licensing restrictions for templates, fonts, music, LUTs and plugins.
+- Maintain license information for integrated open-source components.
+- Follow Google Play policies.
+
+---
+
+# 38. DEVELOPMENT AND IMPLEMENTATION PRIORITIES
+
+Implement the new features in phases. Do not sacrifice the existing application to add every feature simultaneously.
+
+### Phase 1 – Advanced Editing Intelligence
+- AI editing assistant.
+- Transcript-based editing.
+- Advanced scene detection.
+- AI auto-reframing.
+- Smart montage.
+- Project quality assistant.
+
+### Phase 2 – Professional Post-Production
+- Advanced masking.
+- Object tracking.
+- Advanced color tools.
+- Audio post-production.
+- Advanced compositing.
+- Motion graphics improvements.
+
+### Phase 3 – Creative Studio
+- Storyboard.
+- Brand kits.
+- Template system.
+- Music and beat editing.
+- Advanced subtitle studio.
+- AI content creator.
+
+### Phase 4 – Professional Workflows
+- Multicamera editing.
+- Advanced project versioning.
+- Proxy and media management.
+- Batch export.
+- Automation workflow builder.
+- Advanced delivery tools.
+
+### Phase 5 – Next-Generation Features
+- Cloud collaboration.
+- Plugin architecture.
+- Authorized AI generation integrations.
+- External display workspace.
+- Tablet professional workspace.
+- Advanced project sharing.
+
+---
+
+# 39. TESTING AND VALIDATION
+
+Before declaring any feature complete, test its actual behavior.
+
+### Timeline tests
+- Multiple tracks.
+- Long recordings.
+- Nested sequences.
+- Adjustment layers.
+- Masks.
+- Keyframes.
+- Transitions.
+- Audio synchronization.
+- Undo and redo.
+
+### AI tests
+- Transcription accuracy.
+- Timestamp synchronization.
+- Scene detection.
+- Subject tracking.
+- Auto-reframing.
+- Silence detection.
+- Audio enhancement.
+- Quality checking.
+
+### Export tests
+- Different resolutions.
+- Different frame rates.
+- Different codecs.
+- Long videos.
+- Audio synchronization.
+- Subtitle rendering.
+- Interrupted export.
+- Low-storage scenarios.
+
+### Device tests
+- Low-end devices.
+- Mid-range devices.
+- High-end devices.
+- Tablets.
+- Foldable devices.
+- Different aspect ratios.
+- Different Android versions.
+
+### Project safety tests
+- App crash recovery.
+- Interrupted operations.
+- Project restoration.
+- Missing media.
+- Database migration.
+- Offline editing.
+- Cloud synchronization conflicts.
+
+---
+
+# 40. FINAL INSTRUCTIONS
+
+Your first task is to inspect my existing video editor project and identify what has already been implemented.
+
+Then create a detailed implementation plan showing:
+
+1. Existing features that must remain untouched.
+2. Existing features that can be improved.
+3. New features that can be added.
+4. Required architecture changes.
+5. Required dependencies.
+6. Performance risks.
+7. Features requiring external APIs or AI models.
+8. Features that can work fully offline.
+
+After that, implement the upgrades directly in the existing project.
+
+Do not stop after creating UI screens. Connect the UI to real editing operations, data models, background processing and the rendering pipeline.
+
+If an advanced feature requires a model, API, external library or service that is not currently available, implement the appropriate integration architecture and clearly identify the remaining requirement. Never simulate successful processing.
+
+Preserve the original project files and player data. Use safe database migrations and backward-compatible project updates.
+
+**ULTIMATE GOAL:**
+
+I want this application to evolve beyond a traditional mobile video editor. It should become an advanced all-in-one creative production studio combining professional timeline editing, intelligent AI assistance, advanced visual effects, motion graphics, color science, audio engineering, automated workflows, collaboration and high-quality video delivery.
+
+Make it powerful, modern, modular, reliable, visually impressive and expandable for future technologies.
+
+Prioritize genuine functionality, professional editing quality, smooth performance and an excellent user experience over simply adding a large number of unfinished features.

@@ -1,0 +1,6 @@
+{
+  "name": "OpenCut",
+  "description": "Professional multi-track on-device video editor featuring timeline scrubbing, precision splitting, trimming, keyframing, transitions library, voiceover recording, audio ducking, canvas background blurring, and real-time export studio.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

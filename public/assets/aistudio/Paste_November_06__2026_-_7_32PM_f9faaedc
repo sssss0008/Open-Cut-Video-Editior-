@@ -1,0 +1,1260 @@
+# Complete Professional Video Editing App – Ultimate Feature Roadmap
+
+If your goal is to build a mobile video editor that can compete with DaVinci Resolve, Adobe Premiere Pro, CapCut, and Final Cut Pro, you need to think beyond basic video trimming, filters, and transitions.
+
+You should build a complete professional editing ecosystem using Kotlin for Android, with professional editing tools, a multi-track timeline, advanced color grading, audio production, motion graphics, AI tools, and export controls.
+
+My recommendation is to build it as a professional mobile editing studio, not just another video editor.
+
+[Master Video Editing: The Essential Guide to Adobe Premiere Pro | Nexacu](https://images.openai.com/static-rsc-4/51VFs7FUvbKZQQ_g2avJJG9Q1W_hWJcVBxN3TzpHqoTfNJrSIg-gXpYwEq9pVITNtcstzUKr2V2a939SJ15WPj1BKmKmCJ0BPrCauf1kka84q_tlswqYQebrJgB6LglPZFtBoC8xUkQpO2ckzieyMlPgt76u14sEtptNXZY1Hkk?purpose=inline)
+
+[The color grading tool used by Hollywood now supports still photos – and it’s free. DaVinci Resolve 21 works with both photos and videos | Digital Camera World](https://images.openai.com/static-rsc-4/Qaf3KeVkKIXrziwBP_uXEyNKzW_FT2TY8JIZT89hrQIqEGvmWhQu_NTTNbRho5bKDvf4nd8bAqkg5duxzAVaAEc5AzjgPzyoKX00gnusVNyuHtagC3jea9FkbT5ozy_i2dd7i2xtWWhWLhfq8J72NiE6Qs0emKXTU9sgHBg3xfA?purpose=inline)
+
+[Amazing video editing services: Video editing, Green screen editing etc | Upwork](https://images.openai.com/static-rsc-4/J0L8ZIQuDV0jfMl81iatcwek8i0PpxSrlQsTSHivNmyRWmXIJ4st4OsOFAE_QgUpbqU_RDjSCTxctgLfLkLWvewLJ2xOt7qCu_Y_kGJtLw48sN-f7ochZ0RA9tAIkz0DS1U1_G_fpGXCno_D9WUxulu99g06WA6nlsp3F0IwCto?purpose=inline)
+
+8
+
+# Your target application
+
+Professional Mobile Video Studio
+
+Kotlin Android
+
+AI-powered
+
+Professional editing
+
+Multi-track timeline
+
+Here is the complete feature checklist I would use as your development blueprint.
+
+## 1. Complete video editing engine
+
+[Free Editing Footage | Film Editing Pro](https://images.openai.com/static-rsc-4/oIzkV-nQbEjW35PvTurlJNxSRuy6rNWSlrDvDvuG-QfVQL5hFTHzPRdMdA-v49GxYZgO5CcsLfRdojelDbPw6p0ahwV5bkY7An98ipPyCHn_LPywrlhjkiR7mszLWnb1KWm5Vhs7FF7DPNtYCGkXN2Ug--hs18h7N73VKr6MSt0?purpose=inline)
+
+[Adobe Premiere Pro - Audio Mixing - GROSSE POINTE TV PRODUCTION](https://images.openai.com/static-rsc-4/35Yq5Qc9eMB4_VNDRkIb1H1_UvKnEG0CBB18D5ux807mEYsEujSDDvxBMRp9Oaw9G3U2F3hAD68Tnb5Ohlt071MJV4XyzrIvNqWjQgKJ3H5k3ilAg-4Zdx_auMu_jQCk5XL9v-p2T2ENyAen7W2nm9AMpdKiNjDwynihu7adWqg?purpose=inline)
+
+[How to Change the Aspect Ratio in DaVinci Resolve: An Ultimate Guide](https://images.openai.com/static-rsc-4/kH6dBwTqBXH2Z5JbJUqUiNhpgC7P239rNNDeZSRya4r9vPV9FQW3RkOKTLrycIT5OJfE6voeDTQPVX6MKMAQznWHG8b2fI3satYOjMY41oorzhO0HQQbvXp6kR8DD0c90TvGWXQa5nJd4bYLzcLaP_JwajzIp_SViI3so0wXb00?purpose=inline)
+
+8
+
+This is the most important part of your application. The timeline should be powerful enough to handle complex projects.
+
+Timeline and editing
+
+- Unlimited video tracks (hardware-dependent)
+- Unlimited audio tracks (hardware-dependent)
+- Multiple image and overlay tracks
+- Drag-and-drop timeline editing
+- Split, cut, trim, crop and delete clips
+- Ripple delete
+- Ripple insert
+- Roll editing
+- Slip editing
+- Slide editing
+- Replace clip
+- Duplicate clip
+- Copy and paste clips
+- Undo and redo history
+- Multi-clip selection
+- Group and ungroup clips
+- Compound/nested sequences
+- Timeline zoom and scrolling
+- Frame-by-frame navigation
+- Magnetic snapping
+- Timeline markers
+- Clip locking
+- Track locking and hiding
+- Track renaming
+- Track grouping
+- Track mute and solo
+- Clip speed adjustment
+- Reverse playback
+- Freeze frame
+- Frame interpolation
+- Proxy editing
+- Timeline autosave
+- Project recovery after crashes
+- Multiple timelines per project
+- Nested timelines
+
+Professional editing tools
+
+- Source monitor and timeline monitor
+- In and Out points
+- J-K-L playback controls
+- Frame-accurate editing
+- Timecode display
+- Waveform and audio thumbnails
+- Video thumbnails
+- Markers with comments
+- Custom timeline resolution
+- Custom frame rates
+- Keyboard shortcuts
+- External keyboard support
+- Bluetooth mouse support
+- Touch gestures
+- Stylus support
+
+## 2. Video and image transformation
+
+[\[DaVinci Resolve Tutorial\] Effects and Keyframes](https://images.openai.com/static-rsc-4/ao9ginCaeJU7LpTA0QvfIYb4E3OrCKcZh4PKQYcM6KQhtPyDBU4gJ5iGa2d4LsvU9IIAK4rgmNhHV2Wx1r-3QqLmt9vDqzWjMOYpIZZebqnVh_FK0wtVpJf8Ik98FnUKukDEjcdT8dD1hdpffkE5mhHLOlNtLSZRfwzQ9wflLc8?purpose=inline)
+
+[tourboxtech.com](https://www.tourboxtech.com/en/news/effects-and-keyframes-in-davinci-resolve.html?utm_source=chatgpt.com)
+
+- Position X/Y
+- Scale X/Y
+- Uniform and non-uniform scaling
+- Rotation
+- Anchor point
+- Crop top, bottom, left and right
+- Perspective transformation
+- Corner pin
+- Flip horizontal and vertical
+- Fit to screen
+- Fill screen
+- Custom aspect ratio
+- Picture-in-picture
+- Split-screen
+- Video masking
+- Rounded corners
+- Border and outline
+- Shadow
+- Glow
+- Opacity
+- Blend modes
+- Chroma key
+- Green-screen removal
+- Background removal
+- Image stabilization
+- Lens distortion correction
+- Video reframing
+- Auto subject positioning
+
+## 3. Professional color grading system
+
+[How to Use the Primaries Color Wheels in DaVinci Resolve | Envato Tuts+](https://images.openai.com/static-rsc-4/ZhQTJf0D52yL_Ukku19Mwzkd2IutQ3tastVQuVvJTiLMue_LRZh5pTlsZk3NZtjXlKYYYMQmbSiKIryhWwzaSVp-aiznJrovgcWWpPatEEYttbOAQ0gZeEhipo2TLc80DmZIAd7us8_gE6rsZorxQx2M6XwkUF9KTJFsMO413h0?purpose=inline)
+
+[Colour Grading — In Your Face Productions](https://images.openai.com/static-rsc-4/zqwF4QlwzzW5gK9ykhNg1-Sy2R3XsUtslkJVMKZzzMQTW4BxiFETJSd051pBQ20jXsMcQE6XgACuFOIVOUVX6M8Byr1jV69DL_vZOUWB4ts5aMOcocwxL_zEXieObkVQ_0udnv14B1m8BU8E-y8Jy1z0y9CsV5DcQTv9I2F9w90?purpose=inline)
+
+[\[DaVinci Resolve Tutorial\] Secondary Color Grading & Color Correction](https://images.openai.com/static-rsc-4/GrBFNhCO2OCo_easQL7xINM91oKfbefFM9oOnzu9zjGZZujbCgQr0RQ82smGDkNFO4g7pPspi0puxB_uJivxpreT4jiI8DuxlpHewojW2l6BJQEz8vYNoO54VwZ9FejWrulNeqmZ7ZZPv3aYC1LWYtFsUcGLWJmm_hJsOb26OOI?purpose=inline)
+
+7
+
+This is one of the most important areas if you want to compete with DaVinci Resolve.
+
+Basic color correction
+
+- Exposure
+- Brightness
+- Contrast
+- Highlights
+- Shadows
+- Whites
+- Blacks
+- Temperature
+- Tint
+- Saturation
+- Vibrance
+- Gamma
+- Gain
+- Lift
+- Offset
+- Midtone detail
+- Color balance
+
+Advanced color grading
+
+- RGB color wheels
+- Log color wheels
+- HDR color wheels
+- RGB curves
+- Hue vs Hue curves
+- Hue vs Saturation curves
+- Hue vs Luminance curves
+- Luma vs Saturation
+- HSL qualifier
+- Secondary color correction
+- Color isolation
+- Skin tone correction
+- Color matching between clips
+- Shot matching
+- Color grading presets
+- LUT import (.cube)
+- LUT export
+- Custom LUT creation
+- Film emulation
+- Film grain
+- Halation
+- Bloom
+- Vignette
+- HDR grading
+- SDR-to-HDR conversion
+- Color-space conversion
+- ACES workflow
+- Rec.709 support
+- Rec.2020 support
+- HDR10 support
+
+Professional scopes
+
+- RGB waveform
+- Luma waveform
+- Vectorscope
+- Histogram
+- RGB parade
+- False-color exposure display
+- Zebra exposure warnings
+
+## 4. Effects and filters library
+
+[Top Snapchat Filters for Videos and How to Apply Them](https://images.openai.com/static-rsc-4/YpOmkpERq6SqMNO0cFfa422VLBxs6FLg4M8F96HPOr0ZTqhxNgJUHhqYro-dmQgbC53_CetN29ax-Xsl3vkwYf0RmQooz1mBk4XFoglxZUe0kpjcEx9Zu1TI0lbUhw-o-2Z_sxTzV6LT1pc3t5wlgX-9RLjTpOxJDlVhN70e8xA?purpose=inline)
+
+[Una guía para principiantes sobre efectos de video en 2025](https://images.openai.com/static-rsc-4/EGfOww-MYrsFqyexOPCZzYy_poIYsMgGiA1Q7GC8tx8TJz4N7wYg577Xz-dm-JsUHs1pBZzIizbxqPdC63Le234CJahqSZvmcVoERfvPCWfhIolL1OO6R24ZISWKyJBs2vrfTZOXfIBsya1G4TexgmIS7VidZSPwq2sS1NFTsks?purpose=inline)
+
+[剪映這是要搶 PR 的視頻剪輯的飯碗？Jianying pro 2.5.1 最新版本 - 頭條匯](https://images.openai.com/static-rsc-4/2j576r9TWb-dzDK5zYDAirNiOz0NAKT_tw1snvngO4T7DSCVHcbG8aQfk8iFzNrT_glJV3CgR5mh1Rg2poxC4tuDwILMT9dE_Tfi14QONktVlV0wiFHwUqAFzYplisMdKean4ahCqe_xUCPszxh95Ew83Di9JwZ3HKisZqabxNc?purpose=inline)
+
+12
+
+Build an expandable effects marketplace inside your app.
+
+| Category    | Features                                    |
+| ----------- | ------------------------------------------- |
+| Blur        | Gaussian, motion, radial, lens, directional |
+| Light       | Glow, bloom, lens flare, light leaks        |
+| Distortion  | Wave, ripple, fisheye, glitch               |
+| Cinematic   | Film grain, vignette, film damage           |
+| Stylization | Cartoon, sketch, watercolor, pixelate       |
+| Color       | Vintage, cinematic, monochrome, HDR         |
+| Motion      | Shake, zoom, spin, camera movement          |
+| Sharpening  | Sharpen, clarity, detail enhancement        |
+| Noise       | Noise reduction, grain, denoise             |
+| Advanced    | Displacement, chromatic aberration, masking |
+
+Additional features:
+
+- Real-time effect preview
+- Multiple effects on one clip
+- Effect stacking and reordering
+- Effect intensity controls
+- Effect keyframes
+- Effect presets
+- Save custom effects
+- Copy effects between clips
+- Adjustment layers
+- Global effects
+- Track-level effects
+- Effect masking
+- Before-and-after preview
+
+## 5. Transitions
+
+[What is the Best Twitch Editor Tool? Five Options to Consider](https://images.openai.com/static-rsc-4/lzMx6SkNcSstJxtbavp9sBDH7OrrmdAB1Ubj51HqQKuDb9bipf0CLIsxlGVl0xYTIsVb-IN9xgTWM_CdmebBnz3NuQBCAdgVCgelHov0nhpiP0dGy-0yNAZSjIt-o4Biw_IkeLwV9_50U3MM_zTIdDqaUqrmnT4LffXnTnYcr98?purpose=inline)
+
+[filmora.wondershare.com](https://filmora.wondershare.com/social-media/twitch-video-editor.html?utm_source=chatgpt.com)
+
+- Cross dissolve
+- Fade in/out
+- Dip to black
+- Dip to white
+- Wipe transitions
+- Slide transitions
+- Push transitions
+- Zoom transitions
+- Spin transitions
+- Blur transitions
+- Glitch transitions
+- RGB split transitions
+- Light leak transitions
+- Film burn transitions
+- Mask transitions
+- Shape transitions
+- 3D transitions
+- Custom transition builder
+- Transition duration adjustment
+- Transition direction
+- Transition easing
+- Transition sound effects
+- Save custom transitions
+
+## 6. Professional audio editing studio
+
+[DaVinci Resolve – Fairlight | Blackmagic Design](https://images.openai.com/static-rsc-4/i6K_BDdSnFNL1LM4ppdZDIHExx3wNiiHlnpReOK51Fr-9nSU47kGiksGuuT8Yu9phjrM77P3Q_-fE_3UD95O2Sl3eaEz0weTjd7pRZBiZyNL_geluIf7PykZpCHN7M_qk3hS3TZ_EXYk64UEN0fT0SgQgti9Vil6pjBaHpwn5nw?purpose=inline)
+
+[Types Of Audio Editing Software at John Triche blog](https://images.openai.com/static-rsc-4/3VL6Gg7bSGizgWUA4FAghNI7fq603zv7yWUHxe7oOqAYx-ojY-Y7OpRONwMN8dAUVSGH4kx0V-McgN7yUUyd79a7_LenqXISYQTetb4HSKJqfG_Eg4x0mR0YjVLUTQ4sWqCSK_6xKNy7ZSclZfaa-1YY_QIMv2vgZhLi3id81IU?purpose=inline)
+
+[Step by Step Free AI Voice Cloning: Real-life Example - Keepnet](https://images.openai.com/static-rsc-4/6_y5T8Yogg1nzyDjzrk-F3dmeJ-wm5vyoaAn0Wbm51Pu0c9UCITm4iVNpZhoa6THD4oNxMKRSDip7serspVfp734lCurjaBwz_OdnVCMHWh59NQ710QU30HDGzKR4gm7aAml9uQL8Msz852v3FSUTqlOo5FrSOrHL8xciH_1--8?purpose=inline)
+
+9
+
+Your app should have a separate audio workspace.
+
+Audio editing
+
+- Multi-track audio editing
+- Audio waveform display
+- Audio trimming
+- Audio splitting
+- Audio fade in/out
+- Volume automation
+- Pan left/right
+- Audio speed control
+- Pitch adjustment
+- Audio reverse
+- Audio synchronization
+- Audio extraction from video
+- Voice recording
+- Voice-over recording
+- External microphone recording
+- Audio ducking
+- Audio looping
+- Audio channel mapping
+- Stereo and mono support
+
+Professional audio effects
+
+- Equalizer (EQ)
+- Compressor
+- Limiter
+- Noise gate
+- Reverb
+- Delay
+- Echo
+- De-esser
+- Distortion
+- Chorus
+- Flanger
+- Pitch correction
+- Vocal enhancement
+- Background noise removal
+- Hum removal
+- Voice isolation
+- Loudness normalization
+
+Audio mixing
+
+- Individual track mixer
+- Master mixer
+- Volume meters
+- Peak meters
+- LUFS measurement
+- Audio clipping warnings
+- Stereo balance
+- Surround sound mixing
+- Audio presets
+- Export audio separately
+- WAV, MP3, AAC and FLAC support
+
+## 7. Text, titles and typography studio
+
+[Adicione Títulos Animados ao Vídeo | Motion Graphics Online - Flixier](https://images.openai.com/static-rsc-4/catyPvd25zmCxHErM-htp9ZNNNIk5mvVTMz72Ej9s06FrYCtMybgIr72CNO-PPXe0zifnDg_OO87OA5GEQRAdy9X4mNcL8c6IH1gC_CSxdus1TU66RAPPwAdMrtaHHNbtBJOdfXIE2ZE1KcaFpQj72GZjO4UkxHjz03K6vH0da0?purpose=inline)
+
+[Top 10 Video Text Editors to Add Text to Videos Fast](https://images.openai.com/static-rsc-4/PVSPFHo41a7-V7_magQEXFQVaBN7H_9FFBuM4TrXaAfqxNwXSmUPOqI2VYXFJiBjQ4kiFMdHNuS3UqMC41TMhI6HNgJd-dGlh2bB78DW5pcy0dhbZqsAU8gCPNQ9EHw6uX7q0X9YS8-3GzETJkgcjCZxUtGQlq7bh6jNN2Lrvtc?purpose=inline)
+
+[Premiere Pro Template: Clean Gradient Lower Thirds (mogrt) SBV-354370286 - Storyblocks](https://images.openai.com/static-rsc-4/jOeSPojelJBpsPzyWz_ljieqY7QKhVCw5Qw2WDytlndnwppHv33oDSUVVILHyYVkIv_OzVLWoZNJ8JGjN4h8DvYme_vTtYaleFd5QYfitug3aS2mMm932FJqzUN_IB1rePLBKCLeA7qND1oLJscjLwBsGd0t3dg3cjgLrMGtoag?purpose=inline)
+
+10
+
+- Add unlimited text layers
+- Custom fonts
+- Font import
+- Font size and weight
+- Character spacing
+- Line spacing
+- Text alignment
+- Text color
+- Gradient text
+- Text outline
+- Text shadow
+- Text background
+- Text stroke
+- Curved text
+- Vertical text
+- Rotated text
+- 3D text
+- Animated text
+- Kinetic typography
+- Typewriter animation
+- Word-by-word animation
+- Letter-by-letter animation
+- Lower thirds
+- Intro titles
+- Outro titles
+- End-screen templates
+- Credits generator
+- Animated logo
+- Custom title templates
+- Text presets
+- Text tracking and keyframes
+
+## 8. Animation and keyframe editor
+
+[DaVinci Resolve Keyframes and Curve Editor Guide](https://images.openai.com/static-rsc-4/3yNrgCQkZG1y-oqK8tcmO_YHEkw4y6EyHdCSayP0pk9NnJClX2jMVfRESOl9i5E0XuiAaHTknDRsaIGQXWZp2jKGvCr_iHaKxn-5HiUsi9UTPp2tIa_EyHiG7c6HtraJW9bV7S-EXPwgK2pjI4a0x72PYmZMX7ishY1t0_LgXMk?purpose=inline)
+
+[davinciresolveclub.com](https://davinciresolveclub.com/davinci-resolve-keyframes-curve-editor/?utm_source=chatgpt.com)
+
+This is essential for professional-level editing.
+
+- Position keyframes
+- Scale keyframes
+- Rotation keyframes
+- Opacity keyframes
+- Crop keyframes
+- Volume keyframes
+- Color keyframes
+- Effect keyframes
+- Text keyframes
+- Mask keyframes
+- Transition keyframes
+- Speed keyframes
+- Keyframe interpolation
+- Linear interpolation
+- Ease in
+- Ease out
+- Ease in/out
+- Bezier curves
+- Custom animation curves
+- Graph editor
+- Motion paths
+- Keyframe copy and paste
+- Keyframe grouping
+- Animation presets
+- Motion blur
+- Spring animation
+
+## 9. Advanced motion graphics and VFX
+
+[Fusion 21 | Blackmagic Design](https://images.openai.com/static-rsc-4/POPNIEgzs1xEkOtvfu44hRc353wLxawAYchpUNXZBXMRcGP42glKggLEjh8AMrqlNuXUNoS-0IihKqdRtxZag_aJha654Mky-Yf0KhSrICDpzu92giAOfFlj9qY90vHmstnox58cEii9uqQNIyCBB9G9FFaSJVPoHgGc9DxSVGY?purpose=inline)
+
+[Pantalla verde: técnica clave en postproducción audiovisual - Universidad ORT Uruguay](https://images.openai.com/static-rsc-4/wSnQ6kjWrFVZ9L9MqIrDbm5JMQorC8YuIcVd6XDGUsP7hPLqLaSx4YkWF6Ks4XV7U3E_PU_0KX5-TFa6LZbB536W6Xdm07ia4n90hrZE3QbaersXTGTCzlTSHVNrwIWC5JGsVh02Kc-VmTTN4tAnZfRrEVHRssaLWOrkRdDtenM?purpose=inline)
+
+[Particle Designer - A Particle Simulation Editor For Mac · 71Squared](https://images.openai.com/static-rsc-4/vj0PRz--LYCe3rDTTIp52EVulsOEL0XfVyZwbviFeky0AdaSnS6Qp99KN7Z6ketCm997hfS6LVhisdBBdHT9WvmQO_OrclC137o3cbtnZj8VskKxZ0nCYlSc0VJmgfDpPlYHB4uQJI3Tye9J7g8D1p1XFcsFuH6hTeWddyqoQVE?purpose=inline)
+
+8
+
+To move beyond conventional mobile editors, create a dedicated VFX workspace.
+
+- Layer-based compositing
+- Node-based compositing
+- Masking and rotoscoping
+- AI object masking
+- Green-screen keying
+- Blue-screen keying
+- Luma key
+- Chroma key
+- Planar tracking
+- Point tracking
+- Object tracking
+- Motion tracking
+- Camera tracking
+- 2D motion graphics
+- 3D text
+- 3D objects
+- Particle systems
+- Smoke and fire effects
+- Light simulation
+- Lens effects
+- Screen replacement
+- Face tracking
+- Background replacement
+- Rotoscope brush
+- Object removal
+- Compositing masks
+- Blend modes
+- Advanced motion blur
+
+## 10. Speed and time manipulation
+
+- Slow motion
+- Fast motion
+- Speed ramping
+- Custom speed curves
+- Reverse video
+- Boomerang
+- Freeze frame
+- Time remapping
+- Optical flow
+- Frame blending
+- Frame interpolation
+- AI slow motion
+- Variable speed keyframes
+- Preserve audio pitch
+- Time-lapse creation
+- Hyperlapse effects
+
+## 11. AI-powered video editing
+
+Major competitive advantage
+
+[Movavi Video Editor 2025 Steam'de](https://images.openai.com/static-rsc-4/5itYeyqOxeB7nNvT_eRIu3ZbWEQFSYXSfAWbdARq2C2MFg_C7H5Lx05X2GZQ-cs8w9AjyvChX_rn781g1MZyoyTmCR4vH0ebYf_ziJ5YMXcIgc4fFRLzNKQF1IEKoTEUm_CETZxvj_HoH-VuZiMShZVmguhBNhZ042Gx7dPxrus?purpose=inline)
+
+[Best Video Background Remover Tools in 2026 (AI-Powered)](https://images.openai.com/static-rsc-4/rccBExcY5iL7UlZutFV3G6gvgDs3MaJJBwgH7VIDtDDk1a0PLfU-Qu9BvrEO-Kr2OeWUFtiQpjMYoY-aasdFdcs5L8hBW1PJ_KgkFk01iSy4tpPVf5A-p-kZ14btkIO9drXjY6MLI4kD1XXIRxDgOKfCRaHHwGj2grcEhthsJCU?purpose=inline)
+
+[Descript Overview: Streamline Your Audio and Video Editing Workflow](https://images.openai.com/static-rsc-4/CPBcObjl723jBA1wQTlVcXQsIjqAtkquNl3Aca9uElWcFP-iFOKTBW6jHod7Fjc0JhHhgIOygG6Hc4-IW8r9xFxbZE8vxg_6N6moJ7d0GSjjVLOPcwgu8E7LpRsfXHDoyP8y2QjXs8bZxfg__xgVHolP6-gZ4WJdKhyVxRQNrSk?purpose=inline)
+
+13
+
+I strongly recommend making AI a separate workspace, not just adding a few AI filters.
+
+AI editing assistant
+
+- AI auto-edit from selected clips
+- AI highlight detection
+- AI scene detection
+- AI silence removal
+- AI filler-word removal
+- AI jump-cut removal
+- AI automatic video trimming
+- AI video summarization
+- AI editing recommendations
+- AI script-to-video
+- AI storyboard generation
+- AI clip selection
+- AI scene arrangement
+
+AI audio and speech
+
+- Automatic subtitles
+- Speech-to-text
+- Text-based video editing
+- Automatic translation
+- Subtitle synchronization
+- AI voice enhancement
+- AI noise removal
+- AI voice isolation
+- AI voice generation
+- Text-to-speech
+- AI dubbing
+- AI voice cloning (with consent safeguards)
+- Speaker identification
+- Automatic speaker labels
+- Multilingual captions
+
+AI visual tools
+
+- AI background removal
+- AI object removal
+- AI object tracking
+- AI face tracking
+- AI face blur
+- AI portrait enhancement
+- AI relighting
+- AI image enhancement
+- AI video upscaling
+- AI frame interpolation
+- AI motion tracking
+- AI scene replacement
+- AI image-to-video
+- AI text-to-video
+- AI thumbnail generation
+- AI color matching
+- AI automatic reframing
+- AI eye-contact correction
+
+AI content creation
+
+- Generate scripts
+- Generate titles
+- Generate video descriptions
+- Generate hashtags
+- Generate social media clips
+- Generate chapter timestamps
+- Generate B-roll suggestions
+- Generate background music
+- Generate sound effects
+- Generate animated captions
+
+## 12. Subtitles and captions studio
+
+- Automatic subtitle generation
+- Manual subtitle editor
+- SRT import/export
+- VTT import/export
+- ASS subtitle support
+- Multiple subtitle tracks
+- Subtitle translation
+- Word-level highlighting
+- Karaoke subtitles
+- Animated captions
+- Speaker identification
+- Subtitle positioning
+- Subtitle background
+- Custom subtitle fonts
+- Subtitle templates
+- Subtitle timing correction
+- Batch subtitle editing
+- Burn-in captions
+- Separate subtitle export
+
+## 13. Media library and asset management
+
+[Customize Project panel views in Premiere Pro | Premiere](https://images.openai.com/static-rsc-4/ySRLvQbpfe4nHMVg0jcJgtfqOLpdkkL6mQjHpk9zLkBTOlWE5ysWVNxwJtdqTp6RiOknvUiFGV49Tl-wh89rY0TCWUgVg7mhLv8QDB6t3UdKfXJ6l0zQqC7t2aZn-1gmmwLJK1SujCQIMua27yutzDAtxgzy8Dem6QdNEjJeZDI?purpose=inline)
+
+[helpx.adobe.com](https://helpx.adobe.com/ca/premiere/desktop/get-started/customize-the-project-panel/customization-options-for-the-project-panel.html?utm_source=chatgpt.com)
+
+- Import video
+- Import images
+- Import audio
+- Import GIF
+- Import animations
+- Import LUTs
+- Import fonts
+- Import presets
+- Import project files
+- Media folders and bins
+- Smart collections
+- Search and filter assets
+- Sort by name, date and size
+- Media tagging
+- Media metadata
+- Favorite assets
+- Recent assets
+- Duplicate media detection
+- Missing media detection
+- Relink missing files
+- Proxy generation
+- Thumbnail generation
+- Audio waveform caching
+- Media backup
+- Cloud media storage
+- Local media management
+
+## 14. Camera and screen recording studio
+
+- Built-in video camera
+- Front and rear camera
+- Manual focus
+- Manual exposure
+- Manual ISO where supported
+- White balance
+- Frame rate selection
+- Resolution selection
+- Bitrate selection
+- Slow-motion recording
+- Time-lapse recording
+- External microphone
+- Screen recording
+- Internal audio recording where permitted
+- Voice recording
+- Camera stabilization where supported
+- Recording timer
+- Teleprompter
+- Camera grid
+- Histogram and exposure indicators
+
+## 15. Export and rendering engine
+
+[How to Export Ultra High-Definition Videos in DaVinci Resolve | Envato Tuts+](https://images.openai.com/static-rsc-4/JuJ21Ghem1zZl10YGBwvle5XmIU2kjCN0d16sLkg3fhaI8huse2aW-tBVyTeM5mbGixcnAJRjZohQJ0qFnk6_-_b7yC4c2iPvlgFA5tA9iG02gCifM_lJHmY1ek9BVdyJn3RYz7a1uCyaqhX3AF9SakyAKNSABHy3OysqiTSGWg?purpose=inline)
+
+[photography.tutsplus.com](https://photography.tutsplus.com/tutorials/how-to-export-ultra-high-definition-videos-in-davinci-resolve--cms-108801?utm_source=chatgpt.com)
+
+This section is extremely important. A professional editing app needs control over the final video.
+
+Export resolutions
+
+- 240p
+- 360p
+- 480p
+- 720p HD
+- 1080p Full HD
+- 1440p QHD
+- 2160p 4K
+- 4320p 8K, if supported by the device and rendering engine
+- Custom resolution
+
+Frame rates
+
+- 12 FPS
+- 15 FPS
+- 24 FPS
+- 25 FPS
+- 30 FPS
+- 48 FPS
+- 50 FPS
+- 60 FPS
+- 90 FPS
+- 120 FPS, where supported
+
+Video codecs and formats
+
+- H.264
+- H.265 / HEVC
+- AV1, where supported
+- VP9, where supported
+- MP4
+- MOV
+- MKV, where supported
+- WebM
+- ProRes, subject to implementation and device support
+
+Advanced export controls
+
+- Constant bitrate
+- Variable bitrate
+- Custom bitrate
+- Quality presets
+- Hardware encoding
+- Software encoding
+- Audio bitrate
+- Audio sample rate
+- Audio channel selection
+- HDR export
+- Color-space selection
+- Export in background
+- Pause and resume rendering
+- Render queue
+- Batch export
+- Export selected clips
+- Export selected timeline range
+- Export audio only
+- Export GIF
+- Export image sequence
+- Export transparent video where supported
+- Watermark toggle
+- Estimated file size
+- Export progress
+- Export failure recovery
+- Share directly to social media
+
+## 16. Social media and creator tools
+
+Your app should make it easy to produce videos for every major platform.
+
+- YouTube video presets
+- YouTube Shorts presets
+- Instagram Reels presets
+- Instagram Stories presets
+- TikTok presets
+- Facebook Reels presets
+- Facebook video presets
+- X video presets
+- LinkedIn video presets
+- Snapchat video presets
+- Custom platform presets
+- 9:16 vertical video
+- 16:9 landscape video
+- 1:1 square video
+- 4:5 portrait video
+- 4:3 video
+- Automatic aspect ratio conversion
+- Smart crop for vertical videos
+- Automatic subject tracking during reframing
+- Safe-zone guides
+- Social media thumbnail creator
+- Video cover creator
+- YouTube end-screen templates
+- Social media watermark presets
+- Batch export for different platforms
+
+## 17. Professional project management
+
+- Multiple editing projects
+- Project templates
+- Project duplication
+- Project archive
+- Project autosave
+- Automatic backup
+- Version history
+- Restore previous versions
+- Project naming and descriptions
+- Project folders
+- Project search
+- Project media collection
+- Project statistics
+- Timeline statistics
+- Media relinking
+- Offline editing
+- Proxy project mode
+- Project import/export
+- Project recovery
+- Project storage management
+- Cloud backup
+- Device-to-device project transfer
+
+Professional project interchange
+
+Consider supporting:
+
+- FCPXML
+- XML timeline interchange
+- EDL
+- AAF
+- OTIO (OpenTimelineIO)
+- SRT/VTT subtitle files
+- LUT files
+- Custom native project format
+
+Interchange support will make your app more useful to editors who also use desktop editing software.
+
+## 18. Templates, presets and creative marketplace
+
+[KineMaster Releases 6.1 Version with Easier UI and the Magic Remover Tool](https://images.openai.com/static-rsc-4/mRSXrpAYSsnmH_h7oi0v4zIxYfY4iJc3yMUXJTVS4XOo4T0EPm0QtUL-XGorCIocO88e2mXphs6-VEpPHguPOzhOexZYQkoZ4g_OcFp33wAhrCX_Ngnx9hPQsrnv6L95naMHkw9oFJvGS6-hphEAcUO0NdXMnGR5wyzd7afCbSs?purpose=inline)
+
+[Premiere Pro Video Editing Assets Bundle: 4000+ Transitions, Titles, Luts, Overlays (digital Download) - Etsy](https://images.openai.com/static-rsc-4/QGse4tUwSD1B5s8ifgYor_E0tQxKpsatLr2Hv_aR8puFt9wn8OuvtFidWc3OHPxcAxslWfaE2BRdRtS0skUN1ZPmFkQ4qh4__J9QbDNQInG53Vf3NG-jEW2itssOVuxFzo81JXc2GWZF0rYD-A6qRc9rCP414_rFrRzdAXhCxKI?purpose=inline)
+
+[Davinci Resolve Titles Pack DRFX Drag Drop Text Presets Video Editing - Etsy UK](https://images.openai.com/static-rsc-4/A8a749icTQAOsl5ElHO21IPfVwPXq4pqIPtV0dLYc6OBbxiVY-0DCQmAnHkpmdpjXhpmbUt-CtorFbF-iBGqhT5XkyoKBbXqogyMUZMloIMqCKIXPyCZszdpndsCTO997U7xNyqH_CSIebCzyul2zB-zuj9voSRsOY4vzvzn0wU?purpose=inline)
+
+10
+
+Build an integrated creative marketplace.
+
+- Free video templates
+- Premium video templates
+- Intro templates
+- Outro templates
+- YouTube templates
+- Reels templates
+- Cinematic templates
+- Documentary templates
+- Wedding templates
+- Business templates
+- Advertisement templates
+- Animated title packs
+- Transition packs
+- LUT packs
+- Filter packs
+- Sound effect packs
+- Music packs
+- Motion graphics packs
+- Text animation packs
+- User-created presets
+- Downloadable asset library
+- Favorite templates
+- Template preview
+- Search and category filters
+- Ratings and reviews
+- Creator profiles
+- Upload and sell templates
+- Marketplace revenue sharing
+
+## 19. Collaboration and cloud features
+
+- Cloud project backup
+- Cloud media storage
+- Project sharing
+- Shared editing projects
+- Team workspaces
+- Invite collaborators
+- Editor permissions
+- Comment on timeline
+- Time-based comments
+- Review and approval system
+- Project version comparison
+- Shared asset libraries
+- Cloud rendering
+- Synchronize projects across devices
+- Automatic conflict detection
+- Collaborative editing history
+
+## 20. Advanced professional tools
+
+These features can help distinguish your app from typical Android video editors.
+
+- Multicam editing
+- Multicam audio synchronization
+- Proxy workflow
+- Relink original media
+- Nested sequences
+- Compound clips
+- Adjustment clips
+- Track compositing
+- Alpha channel support
+- Advanced blending modes
+- HDR workflow
+- 10-bit video workflow where supported
+- RAW video workflow where supported
+- Camera log profiles
+- Custom color management
+- Frame-accurate editing
+- Broadcast-safe levels
+- Video scopes
+- Audio loudness compliance
+- Custom render profiles
+- XML/AAF/EDL interchange
+- External monitor support where supported
+- USB-C media import
+- External SSD editing
+- Hardware keyboard shortcuts
+- Stylus and mouse workflows
+
+## 21. Additional creative utilities
+
+You can include these tools as separate mini-apps inside the editing studio.
+
+| Tool                 | Function                     |
+| -------------------- | ---------------------------- |
+| GIF Maker            | Convert video into GIF       |
+| Video Compressor     | Reduce file size             |
+| Video Converter      | Convert formats              |
+| Audio Extractor      | Extract audio                |
+| Video Merger         | Combine videos               |
+| Video Splitter       | Split long videos            |
+| Image Sequence Maker | Create videos from photos    |
+| Slideshow Maker      | Create photo slideshows      |
+| Thumbnail Maker      | Create video thumbnails      |
+| Screen Recorder      | Record Android screen        |
+| Voice Recorder       | Record narration             |
+| Subtitle Converter   | Convert subtitle formats     |
+| Video Metadata       | Inspect video properties     |
+| Frame Extractor      | Export individual frames     |
+| Video Stabilizer     | Reduce camera shake          |
+| Video Resizer        | Resize video dimensions      |
+| Video Downloader     | Import permitted local media |
+| Audio Converter      | Convert audio formats        |
+
+## 22. App interface and navigation
+
+I recommend dividing your app into dedicated workspaces rather than putting every tool on one screen.
+
+[🎥 Video Editor App UI Design by Mehedi Hasan Tuhin on Dribbble](https://images.openai.com/static-rsc-4/R5HpvaT69yB4pW_kTYMx11sa_Tf7TVRNDAyufietyp_Ml0tR3Hb4eH5YjUMXM2rjZ4CfhEPi8rb9iVSQMCbe61UxlfQwx6Y4JwoQ_VGofKtPCQHAFHuoEbu3KvR5EYfq-FGBe-nZN-AdJ8VCLNnleGFxwx4YqUbOf6I9nkqLk7o?purpose=inline)
+
+1\. Home Studio
+
+- Recent projects
+- Create new project
+- Templates
+- Import media
+- AI assistant
+- Tutorials
+- Drafts
+
+[Coming Soon: Professional Video Editing on Chromebooks | onchrome](https://images.openai.com/static-rsc-4/KSnUSdb0wKtRyov3WVQJ704uN5qO9qGPlZJPbAwXX7tIfMxw7UdcwqY_S3EGnD6aJpJ48Ptu0ggPKPxlM_U-T6byXFuX5sfBqR_vunUgyMoh_gqrEBGHUxo7Iq-WC9h5ZOv_c9KIDnX15pWCi_wOcTaAt7zHDIBhEif2VMnMk1Q?purpose=inline)
+
+2\. Edit Studio
+
+- Video preview
+- Multi-track timeline
+- Media library
+- Clip inspector
+- Effects
+- Transitions
+- Keyframes
+
+[Editing & Color Grading with DaVinci Resolve](https://images.openai.com/static-rsc-4/ZbTFnXXraHVzsIuwtWMaz05puc-eSCk2XgNo7SqTcOng_dPiWneK6CWRCnd7dBIS--psRm57idFe2wMyS0ybDP1vmzWNEV1mhdYP8MdGAp16s8HHVn6Xl-a-A6mRBRrL1BzlJSHB9I1FJ7tHmK9pjCPRd8TQvHmY2TcLJt5_hG4?purpose=inline)
+
+3\. Color Studio
+
+- Color wheels
+- Curves
+- LUTs
+- Scopes
+- HDR controls
+- Film looks
+
+[Blog Archives - consultancypag](https://images.openai.com/static-rsc-4/fOBBOD__2HSVW0dyYaw64p3tTaeQwcTHbSVEfa62N5e6aPdqw4DGDHZ3HHLpGttKrXv3aRE6LfUn6Hu43t9by63mWbt2Nt-MI2uyJhukFJqmb4sM_GW6mRJdbZgHQoHSNJgtujG8GxVCOvl1IWLxkgucgghI1u-FTbWpyoHFgTc?purpose=inline)
+
+4\. Audio Studio
+
+- Audio mixer
+- EQ
+- Effects
+- Voice recording
+- Noise removal
+- Mastering
+
+[Fusion 21 | Blackmagic Design](https://images.openai.com/static-rsc-4/POPNIEgzs1xEkOtvfu44hRc353wLxawAYchpUNXZBXMRcGP42glKggLEjh8AMrqlNuXUNoS-0IihKqdRtxZag_aJha654Mky-Yf0KhSrICDpzu92giAOfFlj9qY90vHmstnox58cEii9uqQNIyCBB9G9FFaSJVPoHgGc9DxSVGY?purpose=inline)
+
+5\. Motion Studio
+
+- Motion graphics
+- Animation
+- VFX
+- Tracking
+- Masking
+- Compositing
+
+[Video AI Tool Dashboard by Product SAAS for Cansaas on Dribbble](https://images.openai.com/static-rsc-4/Bmevt8tdiNIlI5zyeREmueFsYVMGRtHw5fyUhFpkywccLrR1i7NgcOzw8c-zZI-VGT46L1oSZx5sh1kG4AwWN-vPopY_ujGa7nA7a7VaXw2hvoUeWroOxXOZcyOuBW1nN0vO0OHRQ7FwJngqsPzhRtQkPfBm-aGn_eGooNolRoM?purpose=inline)
+
+6\. AI Studio
+
+- AI editing
+- Captions
+- AI voice
+- Background removal
+- Object removal
+- AI video tools
+
+[LTX 2.3 AI Video Generator | Text-to-Video & Image-to-Video](https://images.openai.com/static-rsc-4/lEPXtu49bcS6MLbuuFNZqckf3yS-p4lxRm_18PBXLeRCvKx0zPxHh9QpA3DbM2bTOf7YLds2UKq6nAZ3VydDJG_ktC6Zvv0nsALdToR-wJ7PrbjPVeOj2kY-fBfAZfvcnV-7pix55bDAqB5a-qsjI7lgptQi_6B8D43thcN_DLY?purpose=inline)
+
+7\. Export Studio
+
+- Rendering
+- Format selection
+- Codec settings
+- Render queue
+- Export history
+- Sharing
+
+## 23. Settings and personalization
+
+- Dark and light themes
+- Custom accent colors
+- Custom workspace layout
+- Adjustable toolbar
+- Custom shortcuts
+- Default export settings
+- Default project settings
+- Timeline preferences
+- Preview quality
+- Proxy quality
+- Cache management
+- GPU acceleration settings
+- Storage location settings
+- Automatic backup settings
+- Language selection
+- Accessibility settings
+- Touch sensitivity
+- Haptic feedback
+- Privacy settings
+- AI processing preferences
+- Cloud synchronization settings
+
+# 24. Recommended Kotlin Android technology stack
+
+This is where you need to make the right decisions. A beautiful UI is not enough. Your rendering engine must actually process video, audio, transitions, effects and multiple tracks.
+
+I recommend a hybrid native architecture.
+
+| Technology               | Purpose                                         |
+| ------------------------ | ----------------------------------------------- |
+| Kotlin                   | Main application language                       |
+| Jetpack Compose          | Modern UI                                       |
+| Media3 Transformer       | Video export and transformation                 |
+| MediaCodec               | Hardware video encoding/decoding                |
+| MediaExtractor           | Reading media tracks                            |
+| MediaMuxer               | Combining encoded audio/video                   |
+| OpenGL ES / Vulkan       | GPU effects and compositing                     |
+| FFmpeg                   | Format processing and advanced media operations |
+| CameraX                  | Camera recording                                |
+| Room Database            | Local project database                          |
+| DataStore                | User settings                                   |
+| WorkManager              | Background jobs                                 |
+| Hilt                     | Dependency injection                            |
+| Coroutines / Flow        | Asynchronous processing                         |
+| ML Kit                   | On-device ML capabilities                       |
+| TensorFlow Lite / LiteRT | Custom AI models                                |
+| Firebase                 | Authentication, cloud sync and storage          |
+| Coil                     | Image and thumbnail loading                     |
+
+Important: Media3 Transformer is useful for media transformation and export, but it is not a complete professional nonlinear editing engine. You will need to implement your own timeline, composition graph, effect pipeline and project model.
+
+### Suggested application architecture
+
+Kotlin + Jetpack Compose UI
+
+Home · Timeline · Color · Audio · AI · Export
+
+Editing Core Engine
+
+Project model · Timeline · Tracks · Keyframes · Undo/Redo
+
+Video Engine
+
+Decoder · Compositor · Effects · Encoder
+
+Audio Engine
+
+Mixer · EQ · DSP · Audio effects
+
+AI Engine
+
+Speech · Vision · Segmentation
+
+Media Engine
+
+Import · Metadata · Proxy · Cache
+
+Android Hardware and Storage
+
+GPU · CPU · MediaCodec · Files · Memory
+
+### Recommended open-source projects to investigate
+
+Don't simply copy other applications. Study their architecture, reuse libraries according to their licenses, and build your own editing experience.
+
+| Project        | What to investigate                              |
+| -------------- | ------------------------------------------------ |
+| FFmpeg         | Encoding, decoding, filters and media processing |
+| GStreamer      | Multimedia pipelines                             |
+| Kdenlive       | Timeline and editing architecture                |
+| Shotcut        | Video editing and MLT                            |
+| OpenTimelineIO | Timeline interchange                             |
+| Media3         | Android video transformation                     |
+| OpenColorIO    | Professional color management                    |
+| Natron         | Node-based compositing                           |
+| Audacity       | Audio processing concepts                        |
+| OBS Studio     | Recording and capture architecture               |
+
+Licensing warning: FFmpeg, GStreamer, MLT and the other projects have different licenses and dependencies. Some configurations may impose GPL, LGPL or other obligations. Review the exact versions, build options, codecs and distribution requirements before integrating them into a commercial app.
+
+# 25. Development roadmap – build in the right order
+
+Trying to implement all these features at once will make your application extremely difficult to maintain. Build a strong editing engine first.
+
+Phase 1 – Core editor
+
+Highest priority
+
+Foundation
+
+- Project creation and media import
+- Video preview
+- Multi-track timeline
+- Trim, split, crop and merge
+- Basic transitions
+- Text and image overlays
+- Undo/redo
+- Basic MP4 export
+
+Phase 2 – Professional editing
+
+- Advanced trimming tools
+- Keyframe animation
+- Speed ramping
+- Audio editing
+- Advanced transitions
+- Effects library
+- Proxy editing
+- Multiple timelines
+
+Phase 3 – Color and audio studios
+
+- Color wheels
+- Curves and LUTs
+- Video scopes
+- Advanced audio mixer
+- EQ and compressor
+- Noise reduction
+- Audio mastering
+
+Phase 4 – VFX and motion graphics
+
+- Advanced masking
+- Green screen
+- Object tracking
+- Compositing
+- Motion graphics
+- Particle effects
+- Node-based editing
+
+Phase 5 – AI studio
+
+- Automatic subtitles
+- Silence removal
+- AI background removal
+- AI voice enhancement
+- AI tracking
+- Text-based editing
+- AI video assistant
+
+Phase 6 – Professional ecosystem
+
+- Cloud synchronization
+- Collaboration
+- Template marketplace
+- Project interchange
+- Advanced export
+- External media support
+- Professional workflows
+
+# 26. Features that will make your app stand out
+
+I would add these features even if competing apps don't offer them in the same way:
+
+1. Modular editing workspace: Users can customize their own editing interface.
+2. Desktop-style timeline on mobile: Support landscape mode, mouse, keyboard and stylus.
+3. AI editing copilot: Users can describe an edit in natural language and the AI creates a proposed timeline.
+4. Smart performance mode: Automatically adjusts preview quality based on device performance.
+5. Professional color workflow: Include LUTs, scopes, curves and color management.
+6. One-tap social export: Automatically creates versions for different platforms.
+7. Custom plugin system: Allow developers to create additional effects and transitions.
+8. Offline-first editing: Core editing should work without internet.
+9. Non-destructive editing: Preserve original media and store editing instructions separately.
+10. Professional project interchange: Allow users to move projects between compatible editing software.
+
+## 27. Important mobile performance requirements
+
+A professional Android editor has to account for mobile hardware limitations.
+
+- Dynamic preview resolution: Full, half, quarter and eighth resolution.
+- GPU-accelerated effects.
+- Background thumbnail generation.
+- Intelligent memory management.
+- Automatic proxy generation.
+- Frame caching.
+- Hardware codec detection.
+- Adaptive export quality.
+- Battery and temperature monitoring.
+- Background rendering with recovery.
+- Large-project memory management.
+- Device-specific performance profiles.
+
+For example, an entry-level phone should be able to edit a complex project using proxies, even if it cannot play the original 4K footage with every effect in real time.
+
+My recommendation: Aim for professional editing capabilities, but don't promise desktop DaVinci Resolve performance on Android. Resolve combines editing, Fusion, color grading and Fairlight in separate professional workspaces; that's a useful architectural model for your application.&#x20;
+
+[image](https://www.google.com/s2/favicons?domain=https://www.blackmagicdesign.com\&sz=32)
+
+Blackmagic Design+2
+
+
+
+## 28. Final product vision
+
+# Your Video Studio
+
+A complete professional video production platform for Android.
+
+[連載第11回: iPad活用の最終形：クリエイティブワークフロー完全ガイド～Procreate、LumaFusion、Final Cut Proの実践的な使い方｜Yuki＠iPadノートの人](https://images.openai.com/static-rsc-4/NdiEygPOlrS1xT9plevyTYe76UyAtIftH4RkLC5beb6lwd8DCI6KzH1qp-s-ZHto0VFPY1CkeaZykCESDTf3mNhimck7CnzCMqtvOYjPxRrzw4WUGycoq6PMvfupOuipTydBWlvv9gQdF66sthqomoJCCivWY643_K5WG8w63EE?purpose=inline)
+
+[note.com](https://note.com/fond_peony2302/n/nd73073bf1617?utm_source=chatgpt.com)
+
+Editing
+
+Professional NLE
+
+Color
+
+Advanced grading
+
+Audio
+
+Mixing and mastering
+
+Motion
+
+Animation and VFX
+
+AI
+
+Intelligent editing
+
+Export
+
+Professional rendering
+
+Assets
+
+Templates and presets
+
+Cloud
+
+Projects and teams
+
+The ultimate goal
+
+One Android application where creators can produce YouTube documentaries, cinematic films, advertisements, music videos, social media content and professional video productions without needing multiple editing applications.
+
+## My most important advice
+
+Don't start by building 200 effects. Build these five things exceptionally well:
+
+1. A reliable multi-track timeline.
+2. A powerful video rendering and compositing engine.
+3. A non-destructive keyframe and animation system.
+4. A professional color grading engine.
+5. A professional audio mixing engine.
+
+These are the foundations. Everything else can be built on top.
+
+Next step: I recommend creating a detailed Kotlin Android development specification, including the complete folder structure, modules, database schema, rendering architecture, open-source dependencies and implementation prompts for your AI coding assistant.

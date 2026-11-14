@@ -1,0 +1,125 @@
+{
+  "entities": {
+    "CloudProject": {
+      "title": "CloudProject",
+      "description": "Cloud-synced video editing project metadata owned by a specific authenticated user.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "UID of the authenticated project owner."
+        },
+        "title": {
+          "type": "string",
+          "description": "Project title."
+        },
+        "aspectRatio": {
+          "type": "string",
+          "description": "Canvas aspect ratio (e.g., 16:9, 9:16, 1:1)."
+        },
+        "durationMs": {
+          "type": "integer",
+          "description": "Total timeline duration in milliseconds."
+        },
+        "clipCount": {
+          "type": "integer",
+          "description": "Number of timeline clips in the project."
+        },
+        "activeFilterPreset": {
+          "type": "string",
+          "description": "Active cinematic filter or color grading preset applied."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp (clients must submit FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp (clients must submit FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "userId",
+        "title",
+        "aspectRatio",
+        "durationMs",
+        "clipCount",
+        "activeFilterPreset",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CreatorAnalytics": {
+      "title": "CreatorAnalytics",
+      "description": "Aggregated creator studio analytics and cloud usage telemetry for an authenticated user.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "UID of the authenticated user."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name of the creator."
+        },
+        "totalProjectsCount": {
+          "type": "integer",
+          "description": "Total number of projects created or synced."
+        },
+        "exportedVideosCount": {
+          "type": "integer",
+          "description": "Total number of videos rendered and exported."
+        },
+        "totalTimelineDurationMs": {
+          "type": "integer",
+          "description": "Total duration of edited footage across projects in milliseconds."
+        },
+        "favoriteFilterPreset": {
+          "type": "string",
+          "description": "Most frequently applied cinematic color grading preset."
+        },
+        "cloudStorageUsedKb": {
+          "type": "integer",
+          "description": "Estimated cloud metadata and proxy storage used in kilobytes."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp (clients must submit FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp (clients must submit FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "userId",
+        "displayName",
+        "totalProjectsCount",
+        "exportedVideosCount",
+        "totalTimelineDurationMs",
+        "favoriteFilterPreset",
+        "cloudStorageUsedKb",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/projects/{projectId}": {
+      "schema": {
+        "$ref": "#/entities/CloudProject"
+      },
+      "description": "Per-user cloud-synced video projects collection."
+    },
+    "/users/{userId}/analytics/{analyticsId}": {
+      "schema": {
+        "$ref": "#/entities/CreatorAnalytics"
+      },
+      "description": "Per-user studio analytics summary and telemetry documents."
+    }
+  }
+}
