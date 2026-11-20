@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Movie
@@ -71,6 +72,7 @@ fun TrackHeadersColumn(
     isTextVisible: Boolean,
     isTextLocked: Boolean,
     hasShapes: Boolean,
+    hasImages: Boolean = false,
     onToggleVisibility: (TrackType) -> Unit,
     onToggleLock: (TrackType) -> Unit,
     onAddCueMarker: () -> Unit,
@@ -238,6 +240,25 @@ fun TrackHeadersColumn(
                 visibilityTag = "track_sh1_visibility_toggle",
                 lockTag = "track_sh1_lock_toggle",
                 modifier = Modifier.testTag("track_sh1_header")
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+        }
+
+        // 5b. IMG Image Overlay Track Header (Height 48.dp if images present)
+        if (hasImages) {
+            TrackHeaderCell(
+                trackLabel = "IMG",
+                trackName = "Photos",
+                accentColor = Color(0xFF38BDF8),
+                icon = Icons.Default.Image,
+                heightDp = 48,
+                isMutedOrHidden = false,
+                isLocked = false,
+                onToggleVisibility = {},
+                onToggleLock = {},
+                visibilityTag = "track_img1_visibility_toggle",
+                lockTag = "track_img1_lock_toggle",
+                modifier = Modifier.testTag("track_img1_header")
             )
             Spacer(modifier = Modifier.height(4.dp))
         }

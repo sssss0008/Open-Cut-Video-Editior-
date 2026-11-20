@@ -1,8 +1,11 @@
 package com.example.ui.screens
 
+import android.graphics.BitmapFactory
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -28,7 +31,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Menu
@@ -46,12 +52,14 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -65,6 +73,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -73,6 +84,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.db.ImportedMediaEntity
 import com.example.data.model.AudioCategory
+import com.example.data.model.ImportProgressState
 import com.example.data.model.SampleAudio
 import com.example.data.model.SampleMediaRepository
 import com.example.data.model.SampleVideo
@@ -84,7 +96,9 @@ import com.example.ui.theme.StudioCardDark
 import com.example.ui.theme.StudioDarkBg
 import com.example.ui.theme.StudioSurfaceDark
 import com.example.ui.theme.TrackAudioColor
+import com.example.util.DeviceMediaImporter
 import com.example.viewmodel.VideoEditorViewModel
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -93,7 +107,11 @@ import java.util.Locale
 @Composable
 fun LibraryScreen(
     importedMedia: List<ImportedMediaEntity> = emptyList(),
+    importProgress: ImportProgressState = ImportProgressState(),
     onImportMedia: (uri: String, name: String, type: String) -> Unit = { _, _, _ -> },
+    onImportMultipleVideos: ((List<Uri>) -> Unit)? = null,
+    onCancelImport: () -> Unit = {},
+    onClearImportError: () -> Unit = {},
     onDeleteImportedMedia: (String) -> Unit = {},
     onAddImportedToTimeline: (ImportedMediaEntity) -> Unit = {},
     onAddSampleClip: (SampleVideo) -> Unit,
@@ -102,18 +120,25 @@ fun LibraryScreen(
     onAddTextTitle: (text: String, preset: TextStylePreset) -> Unit,
     onOpenDrawer: () -> Unit
 ) {
+    val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) }
     var previewingAudioName by remember { mutableStateOf<String?>(null) }
     val tabTitles = listOf("Imported (${importedMedia.size})", "B-Roll Video", "Soundtracks", "Sound FX", "Stickers & Titles")
 
     // Android 100% offline local file pickers
-    // 1. Video Picker
+    // 1. Multi-Video Picker (Zero-permission Android Photo Picker)
     val videoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri ->
-        if (uri != null) {
-            val fileName = uri.lastPathSegment?.split("/")?.lastOrNull()?.replace("raw:", "") ?: "Device Video"
-            onImportMedia(uri.toString(), fileName, "VIDEO")
+        contract = ActivityResultContracts.PickMultipleVisualMedia()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            if (onImportMultipleVideos != null) {
+                onImportMultipleVideos(uris)
+            } else {
+                uris.forEach { uri ->
+                    val fileName = DeviceMediaImporter.resolveFileName(context, uri)
+                    onImportMedia(uri.toString(), fileName, "VIDEO")
+                }
+            }
         }
     }
 
@@ -122,7 +147,7 @@ fun LibraryScreen(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
-            val fileName = uri.lastPathSegment?.split("/")?.lastOrNull()?.replace("raw:", "") ?: "Device Image"
+            val fileName = DeviceMediaImporter.resolveFileName(context, uri)
             onImportMedia(uri.toString(), fileName, "IMAGE")
         }
     }
@@ -132,7 +157,7 @@ fun LibraryScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) {
-            val fileName = uri.lastPathSegment?.split("/")?.lastOrNull()?.replace("raw:", "") ?: "Soundtrack Audio"
+            val fileName = DeviceMediaImporter.resolveFileName(context, uri)
             onImportMedia(uri.toString(), fileName, "AUDIO")
         }
     }
@@ -261,6 +286,85 @@ fun LibraryScreen(
                 }
             }
 
+            if (importProgress.isImporting) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFF0E293B),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, AccentCyan.copy(alpha = 0.6f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .testTag("library_import_progress_banner")
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Importing (${importProgress.currentIndex}/${importProgress.totalCount.coerceAtLeast(1)}): ${importProgress.currentFileName}",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = importProgress.stageLabel.ifBlank { "Copying & validating..." },
+                                    color = AccentCyan,
+                                    fontSize = 10.sp
+                                )
+                            }
+                            TextButton(
+                                onClick = onCancelImport,
+                                modifier = Modifier.testTag("library_cancel_import_button")
+                            ) {
+                                Text("Cancel", color = Color(0xFFFF8A80), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        LinearProgressIndicator(
+                            progress = { importProgress.progress.coerceIn(0f, 1f) },
+                            color = AccentCyan,
+                            trackColor = Color(0xFF1F2937),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 6.dp)
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                        )
+                    }
+                }
+            } else if (!importProgress.errorMessage.isNullOrBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFF450A0A),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .testTag("library_import_error_banner")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.ErrorOutline, contentDescription = "Import Error", tint = Color(0xFFFCA5A5), modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = importProgress.errorMessage,
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = onClearImportError, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Default.Close, contentDescription = "Dismiss Error", tint = Color.LightGray, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
+
             // Category Tabs
             PrimaryTabRow(
                 selectedTabIndex = selectedTab,
@@ -330,6 +434,37 @@ fun LibraryScreen(
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             items(importedMedia, key = { it.id }) { item ->
+                                val thumbBitmap = remember(item.thumbnailPath) {
+                                    if (item.thumbnailPath.isNotBlank() && File(item.thumbnailPath).exists()) {
+                                        runCatching { BitmapFactory.decodeFile(item.thumbnailPath)?.asImageBitmap() }.getOrNull()
+                                    } else null
+                                }
+                                val (typeColor, typeIcon, typeLabel) = when (item.mediaType.uppercase()) {
+                                    "IMAGE" -> Triple(Color(0xFFEC4899), Icons.Default.Image, "PHOTO")
+                                    "AUDIO" -> Triple(Color(0xFF10B981), Icons.Default.Audiotrack, "AUDIO")
+                                    else -> Triple(Color(0xFF3B82F6), Icons.Default.Videocam, "VIDEO")
+                                }
+                                val metadataSummary = buildString {
+                                    if (item.mediaType.equals("VIDEO", ignoreCase = true)) {
+                                        if (item.width > 0 && item.height > 0) append("${item.width}x${item.height} • ")
+                                        if (item.durationMs > 0L) append("${VideoEditorViewModel.formatTime(item.durationMs)} • ")
+                                        if (item.frameRate > 0f) append("${item.frameRate.toInt()}fps")
+                                        if (item.videoCodec.isNotBlank()) append(" • ${item.videoCodec}")
+                                    } else {
+                                        if (item.durationMs > 0L) append("${VideoEditorViewModel.formatTime(item.durationMs)} • ")
+                                        append(item.mimeType.ifBlank { typeLabel })
+                                    }
+                                }
+                                val secondarySummary = buildString {
+                                    if (item.audioInfo.isNotBlank()) append("${item.audioInfo} • ")
+                                    if (item.sizeBytes > 0L) {
+                                        val kb = (item.sizeBytes / 1024L).coerceAtLeast(1L)
+                                        append(if (kb >= 1024L) String.format(Locale.US, "%.1f MB", kb / 1024f) else "$kb KB")
+                                    } else {
+                                        append("Added ${dateFormat.format(Date(item.addedAt))}")
+                                    }
+                                }
+
                                 Surface(
                                     shape = RoundedCornerShape(12.dp),
                                     color = StudioCardDark,
@@ -340,47 +475,90 @@ fun LibraryScreen(
                                         modifier = Modifier.padding(12.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        // Media Type Icon & Color Box
-                                        val (typeColor, typeIcon, typeLabel) = when (item.mediaType.uppercase()) {
-                                            "IMAGE" -> Triple(Color(0xFFEC4899), Icons.Default.Image, "PHOTO")
-                                            "AUDIO" -> Triple(Color(0xFF10B981), Icons.Default.Audiotrack, "AUDIO")
-                                            else -> Triple(Color(0xFF3B82F6), Icons.Default.Videocam, "VIDEO")
-                                        }
-
-                                        Surface(
-                                            shape = RoundedCornerShape(8.dp),
-                                            color = typeColor.copy(alpha = 0.2f),
-                                            border = androidx.compose.foundation.BorderStroke(1.dp, typeColor),
-                                            modifier = Modifier.size(width = 54.dp, height = 48.dp)
+                                        Box(
+                                            modifier = Modifier
+                                                .size(width = 68.dp, height = 52.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(typeColor.copy(alpha = 0.18f))
+                                                .border(1.dp, typeColor, RoundedCornerShape(8.dp)),
+                                            contentAlignment = Alignment.Center
                                         ) {
-                                            Column(
-                                                horizontalAlignment = Alignment.CenterHorizontally,
-                                                verticalArrangement = Arrangement.Center
-                                            ) {
-                                                Icon(typeIcon, typeLabel, tint = typeColor, modifier = Modifier.size(20.dp))
-                                                Text(typeLabel, color = typeColor, fontSize = 8.sp, fontWeight = FontWeight.Black)
+                                            if (thumbBitmap != null) {
+                                                Image(
+                                                    bitmap = thumbBitmap,
+                                                    contentDescription = item.name,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                                Surface(
+                                                    color = Color.Black.copy(alpha = 0.7f),
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    modifier = Modifier
+                                                        .align(Alignment.BottomStart)
+                                                        .padding(3.dp)
+                                                ) {
+                                                    Text(
+                                                        text = typeLabel,
+                                                        color = typeColor,
+                                                        fontSize = 7.sp,
+                                                        fontWeight = FontWeight.Black,
+                                                        modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                            } else {
+                                                Column(
+                                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                                    verticalArrangement = Arrangement.Center
+                                                ) {
+                                                    Icon(typeIcon, typeLabel, tint = typeColor, modifier = Modifier.size(20.dp))
+                                                    Text(typeLabel, color = typeColor, fontSize = 8.sp, fontWeight = FontWeight.Black)
+                                                }
                                             }
                                         }
 
                                         Spacer(modifier = Modifier.width(12.dp))
 
                                         Column(modifier = Modifier.weight(1f)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    text = item.name,
+                                                    color = Color.White,
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.weight(1f, fill = false)
+                                                )
+                                                if (item.isPlaybackVerified) {
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Icon(
+                                                        imageVector = Icons.Default.CheckCircle,
+                                                        contentDescription = "Playback Verified",
+                                                        tint = AccentEmerald,
+                                                        modifier = Modifier.size(14.dp)
+                                                    )
+                                                }
+                                            }
+                                            if (metadataSummary.isNotBlank()) {
+                                                Text(
+                                                    text = metadataSummary.trimEnd(' ', '•'),
+                                                    color = AccentCyan,
+                                                    fontSize = 10.sp,
+                                                    fontFamily = FontFamily.Monospace,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
                                             Text(
-                                                text = item.name,
-                                                color = Color.White,
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.Bold,
+                                                text = secondarySummary.trimEnd(' ', '•'),
+                                                color = Color.LightGray,
+                                                fontSize = 10.sp,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
                                             )
-                                            Text(
-                                                text = "Added ${dateFormat.format(Date(item.addedAt))}",
-                                                color = Color.Gray,
-                                                fontSize = 10.sp
-                                            )
                                         }
 
-                                        // Action buttons: Add to Timeline & Delete
+                                        // Action buttons: Add/Edit & Delete
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Button(
                                                 onClick = { onAddImportedToTimeline(item) },
@@ -391,14 +569,19 @@ fun LibraryScreen(
                                             ) {
                                                 Icon(Icons.Default.Add, "Add", tint = Color.Black, modifier = Modifier.size(15.dp))
                                                 Spacer(modifier = Modifier.width(4.dp))
-                                                Text("Add", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                Text(
+                                                    text = if (item.mediaType.equals("VIDEO", ignoreCase = true) && !item.isPlaybackVerified) "Verify" else "Add",
+                                                    color = Color.Black,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
                                             }
 
                                             IconButton(
                                                 onClick = { onDeleteImportedMedia(item.id) },
-                                                modifier = Modifier.size(32.dp).padding(start = 4.dp)
+                                                modifier = Modifier.size(48.dp)
                                             ) {
-                                                Icon(Icons.Default.Delete, "Delete", tint = Color(0xFFFF5252), modifier = Modifier.size(16.dp))
+                                                Icon(Icons.Default.Delete, "Delete", tint = Color(0xFFFF5252), modifier = Modifier.size(18.dp))
                                             }
                                         }
                                     }

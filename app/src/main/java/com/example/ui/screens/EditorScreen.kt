@@ -36,11 +36,17 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -60,6 +66,10 @@ import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -97,14 +107,37 @@ import com.example.ui.components.SpeedSheet
 import com.example.ui.components.StabilizationSheet
 import com.example.ui.components.StickerPickerSheet
 import com.example.ui.components.TextEditorSheet
+import com.example.ui.components.TransitionDragGhostOverlay
 import com.example.ui.components.TransitionLibrarySheet
 import com.example.ui.components.TransitionSheet
-import com.example.ui.components.TransitionsLibraryPanel
+import com.example.ui.components.TransitionsLibrary
+import com.example.ui.components.resolveTransitionDropTarget
+import android.content.Intent
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.runtime.rememberCoroutineScope
+import com.example.ui.components.CapturedFramePreviewDialog
+import com.example.util.Media3VideoExporter
+import com.example.util.StudioExportUtilities
+import kotlinx.coroutines.launch
+import java.io.File
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.platform.LocalContext
+import com.example.ui.components.ClipAudioFadesSheet
+import com.example.ui.components.CropAndResizeSheet
+import com.example.ui.components.DiagnosticsSheet
+import com.example.ui.components.FullscreenPreviewDialog
 import com.example.ui.components.TrimSheet
 import com.example.ui.components.VideoPlayerView
 import com.example.ui.theme.AccentCyan
 import com.example.ui.theme.StudioDarkBg
 import com.example.ui.theme.StudioSurfaceDark
+import com.example.util.DeviceMediaImporter
 import com.example.viewmodel.EditorUiState
 import com.example.viewmodel.VideoEditorViewModel
 
@@ -116,12 +149,55 @@ fun EditorScreen(
     onBack: () -> Unit,
     onNavigateExport: () -> Unit
 ) {
+    val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     var showAspectRatioPicker by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
+    var dragPointerInRoot by remember { mutableStateOf<Offset?>(null) }
+    var rootOriginInRoot by remember { mutableStateOf(Offset.Zero) }
+    val transitionSeamBounds = remember { mutableStateMapOf<String, Rect>() }
+    var selectedLibraryTransition by remember { mutableStateOf(TransitionType.CROSSFADE) }
+    var selectedLibraryDurationSec by remember { mutableFloatStateOf(0.6f) }
+
+    val hoveredIntersectionClipId = if (uiState.draggingTransition != null && dragPointerInRoot != null) {
+        resolveTransitionDropTarget(dragPointerInRoot!!, transitionSeamBounds)
+    } else null
+
+    val imageOverlayLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            val name = DeviceMediaImporter.resolveFileName(context, uri)
+            viewModel.addImageOverlayFromUri(uri.toString(), name)
+        }
+    }
+
+    val replaceAudioLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        val clipId = uiState.selectedClipId ?: uiState.clips.firstOrNull()?.id
+        if (uri != null && clipId != null) {
+            viewModel.replaceClipAudioWithUri(clipId, uri.toString())
+        }
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, viewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
+                viewModel.flushAutoSave()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            viewModel.flushAutoSave()
+        }
+    }
 
     // Android predictive back handler
     BackHandler {
+        viewModel.flushAutoSave()
         onBack()
     }
 
@@ -170,11 +246,46 @@ fun EditorScreen(
                                     modifier = Modifier.size(13.dp)
                                 )
                             }
-                            Text(
-                                text = "${uiState.aspectRatio.label.split(" ").first()} • ${uiState.clips.size} clips",
-                                color = AccentCyan,
-                                fontSize = 10.sp
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "${uiState.aspectRatio.label.split(" ").first()} • ${uiState.clips.size} clips",
+                                    color = AccentCyan,
+                                    fontSize = 10.sp,
+                                    maxLines = 1
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = when {
+                                        uiState.isAutoSaving -> AccentCyan.copy(alpha = 0.22f)
+                                        uiState.isAutoSaveEnabled -> Color(0xFF10B981).copy(alpha = 0.18f)
+                                        else -> Color(0xFF334155)
+                                    },
+                                    modifier = Modifier
+                                        .clickable { viewModel.triggerManualAutoSave() }
+                                        .testTag("auto_save_status_pill")
+                                ) {
+                                    Text(
+                                        text = when {
+                                            uiState.isAutoSaving -> "Saving…"
+                                            !uiState.isAutoSaveEnabled -> "Paused"
+                                            uiState.lastAutoSavedAtMs != null -> "Auto-saved"
+                                            else -> "Room Sync"
+                                        },
+                                        color = when {
+                                            uiState.isAutoSaving -> AccentCyan
+                                            uiState.isAutoSaveEnabled -> Color(0xFF34D399)
+                                            else -> Color.LightGray
+                                        },
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 },
@@ -214,6 +325,18 @@ fun EditorScreen(
                             imageVector = Icons.Default.History,
                             contentDescription = "Editing History & Layers",
                             tint = if (uiState.editHistory.isNotEmpty()) AccentCyan else Color.White
+                        )
+                    }
+
+                    // Diagnostics Logs
+                    IconButton(
+                        onClick = { viewModel.toggleDiagnosticsDialog(true) },
+                        modifier = Modifier.testTag("diagnostics_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.BugReport,
+                            contentDescription = "Media Diagnostics",
+                            tint = Color.LightGray
                         )
                     }
 
@@ -263,11 +386,81 @@ fun EditorScreen(
         },
         containerColor = StudioDarkBg
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .onGloballyPositioned { coords ->
+                    rootOriginInRoot = coords.boundsInRoot().topLeft
+                }
         ) {
+        Column(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            // Inline Import Progress / Error Banner
+            if (uiState.importProgress.isImporting) {
+                Surface(
+                    color = Color(0xFF0E1B2E),
+                    border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .testTag("editor_import_progress_banner")
+                ) {
+                    Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = uiState.importProgress.stageLabel.ifBlank { "Importing ${uiState.importProgress.currentFileName}..." },
+                                color = AccentCyan,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(onClick = { viewModel.cancelImport() }) {
+                                Text("Cancel", color = Color(0xFFEF4444), fontSize = 11.sp)
+                            }
+                        }
+                        LinearProgressIndicator(
+                            progress = { uiState.importProgress.progress.coerceIn(0.05f, 1f) },
+                            color = AccentCyan,
+                            trackColor = Color(0xFF1E293B),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            } else if (uiState.importProgress.errorMessage != null) {
+                Surface(
+                    color = Color(0xFF450A0A),
+                    border = BorderStroke(1.dp, Color(0xFFEF4444)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .testTag("editor_import_error_banner")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = uiState.importProgress.errorMessage!!,
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { viewModel.clearImportError() }) {
+                            Text("Dismiss", color = AccentCyan, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+
             // Zone 1: Top Zone (Preview Monitor & Timecode)
             VideoPlayerView(
                 activeClip = uiState.activeClipAtPlayhead,
@@ -278,6 +471,16 @@ fun EditorScreen(
                 activeTextOverlays = uiState.activeTextOverlays,
                 activeStickers = uiState.activeStickers,
                 activeShapes = uiState.activeShapes,
+                activeImageOverlays = uiState.activeImageOverlays,
+                audioTracks = uiState.audioClips,
+                isVideoTrackMuted = uiState.isVideoTrackMuted,
+                isAudioTrackMuted = uiState.isAudioTrackMuted,
+                isVoiceoverActive = uiState.isVoiceoverActive,
+                autoDuckingLevel = uiState.autoDuckingDuckLevel,
+                masterVolume = uiState.masterVolume,
+                isAutoDuckingEnabled = uiState.isAutoDuckingMasterEnabled,
+                onSetMasterVolume = { viewModel.setMasterVolume(it) },
+                onOpenFullscreen = { viewModel.toggleFullscreenPreview(true) },
                 isStabilizationSplitPreview = uiState.isStabilizationSplitPreview,
                 isKeyframeOverlayActive = uiState.showKeyframeOverlay,
                 onToggleKeyframeOverlay = { viewModel.toggleKeyframeOverlay() },
@@ -291,33 +494,55 @@ fun EditorScreen(
                 onJumpCut = { viewModel.jumpToCut(it) },
                 onChangeAspectRatio = { showAspectRatioPicker = !showAspectRatioPicker },
                 onImportVideoClick = { viewModel.toggleMediaPicker(true) },
+                compositionGuideMode = uiState.compositionGuideMode,
+                onCycleCompositionGuide = { viewModel.cycleCompositionGuideMode() },
+                onCaptureFrame = { viewModel.captureCurrentFrameToPng() },
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1.0f)
             )
 
-            // Keyframe Parameter Editor Overlay (adjust scale, opacity, rotation over time)
+            // Keyframe Parameter Editor Overlay (animate scale, opacity, and rotation for selected video or image clips)
+            val selectedImageTarget = uiState.selectedImageOverlay
+            val selectedVideoTarget = uiState.selectedClip
             AnimatedVisibility(
-                visible = uiState.showKeyframeOverlay && uiState.selectedClip != null,
+                visible = uiState.showKeyframeOverlay && (selectedImageTarget != null || selectedVideoTarget != null),
                 enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
                 exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut()
             ) {
-                if (uiState.selectedClip != null) {
-                    val clip = uiState.selectedClip!!
-                    KeyframeParameterEditorOverlay(
-                        clip = clip,
-                        currentTimelinePositionMs = uiState.currentPositionMs,
-                        isPlaying = uiState.isPlaying,
-                        onTogglePlay = { viewModel.togglePlayPause() },
-                        onSeekTimeline = { timeMs -> viewModel.seekTo(timeMs) },
-                        onAddKeyframe = { kf -> viewModel.addKeyframe(clip.id, kf) },
-                        onUpdateKeyframe = { kf -> viewModel.updateKeyframe(clip.id, kf) },
-                        onRemoveKeyframe = { kfId -> viewModel.removeKeyframe(clip.id, kfId) },
-                        onApplyPreset = { preset -> viewModel.applyKeyframePreset(clip.id, preset) },
-                        onClearKeyframes = { viewModel.clearAllKeyframes(clip.id) },
-                        onOpenCurveGraphSheet = { viewModel.toggleKeyframeSheet(true) },
-                        onClose = { viewModel.toggleKeyframeOverlay(false) }
-                    )
+                when {
+                    selectedImageTarget != null -> {
+                        KeyframeParameterEditorOverlay(
+                            imageOverlay = selectedImageTarget,
+                            currentTimelinePositionMs = uiState.currentPositionMs,
+                            isPlaying = uiState.isPlaying,
+                            onTogglePlay = { viewModel.togglePlayPause() },
+                            onSeekTimeline = { timeMs -> viewModel.seekTo(timeMs) },
+                            onAddKeyframe = { kf -> viewModel.addKeyframe(selectedImageTarget.id, kf) },
+                            onUpdateKeyframe = { kf -> viewModel.updateKeyframe(selectedImageTarget.id, kf) },
+                            onRemoveKeyframe = { kfId -> viewModel.removeKeyframe(selectedImageTarget.id, kfId) },
+                            onApplyPreset = { preset -> viewModel.applyKeyframePreset(selectedImageTarget.id, preset) },
+                            onClearKeyframes = { viewModel.clearAllKeyframes(selectedImageTarget.id) },
+                            onOpenCurveGraphSheet = { viewModel.toggleKeyframeSheet(true) },
+                            onClose = { viewModel.toggleKeyframeOverlay(false) }
+                        )
+                    }
+                    selectedVideoTarget != null -> {
+                        KeyframeParameterEditorOverlay(
+                            clip = selectedVideoTarget,
+                            currentTimelinePositionMs = uiState.currentPositionMs,
+                            isPlaying = uiState.isPlaying,
+                            onTogglePlay = { viewModel.togglePlayPause() },
+                            onSeekTimeline = { timeMs -> viewModel.seekTo(timeMs) },
+                            onAddKeyframe = { kf -> viewModel.addKeyframe(selectedVideoTarget.id, kf) },
+                            onUpdateKeyframe = { kf -> viewModel.updateKeyframe(selectedVideoTarget.id, kf) },
+                            onRemoveKeyframe = { kfId -> viewModel.removeKeyframe(selectedVideoTarget.id, kfId) },
+                            onApplyPreset = { preset -> viewModel.applyKeyframePreset(selectedVideoTarget.id, preset) },
+                            onClearKeyframes = { viewModel.clearAllKeyframes(selectedVideoTarget.id) },
+                            onOpenCurveGraphSheet = { viewModel.toggleKeyframeSheet(true) },
+                            onClose = { viewModel.toggleKeyframeOverlay(false) }
+                        )
+                    }
                 }
             }
 
@@ -511,15 +736,17 @@ fun EditorScreen(
                         hasSelectedText = uiState.selectedText != null,
                         hasSelectedSticker = uiState.selectedStickerId != null,
                         hasSelectedShape = uiState.selectedShapeId != null,
+                        hasSelectedImageOverlay = uiState.selectedImageOverlayId != null,
                         onSplit = { viewModel.splitSelectedClip() },
                         onTrim = { viewModel.toggleTrimSheet(true) },
                         onSpeed = { viewModel.toggleSpeedSheet(true) },
                         onFilter = { viewModel.toggleFilterSheet(true) },
                         onTransition = {
                             if (uiState.selectedClipId == null && uiState.clips.isNotEmpty()) {
-                                viewModel.selectClip(uiState.clips.first().id)
+                                val defaultTarget = uiState.clips.getOrNull(1) ?: uiState.clips.first()
+                                viewModel.selectClip(defaultTarget.id)
                             }
-                            viewModel.toggleTransitionSheet(true)
+                            viewModel.toggleTransitionsLibraryPanel(!uiState.showTransitionsLibraryPanel)
                         },
                         onRotate = { uiState.selectedClipId?.let { viewModel.rotateClip(it) } },
                         onFlip = { uiState.selectedClipId?.let { viewModel.flipHorizontalClip(it) } },
@@ -537,6 +764,7 @@ fun EditorScreen(
                                 uiState.selectedTextId != null -> viewModel.deleteTextOverlay(uiState.selectedTextId)
                                 uiState.selectedStickerId != null -> viewModel.deleteSticker(uiState.selectedStickerId)
                                 uiState.selectedShapeId != null -> viewModel.deleteShapeOverlay(uiState.selectedShapeId!!)
+                                uiState.selectedImageOverlayId != null -> viewModel.deleteImageOverlay(uiState.selectedImageOverlayId!!)
                             }
                         },
                         onDuplicate = { uiState.selectedClipId?.let { viewModel.duplicateClip(it) } },
@@ -561,15 +789,83 @@ fun EditorScreen(
                         onPrecisionScrubber = { viewModel.togglePrecisionScrubber(true) },
                         onColorGrade = { viewModel.toggleColorGradingSheet(true) },
                         onAiMagic = { viewModel.toggleAiStudioSheet(true) },
+                        onCropResize = { viewModel.toggleCropResizeSheet(true) },
+                        onMergeNext = { viewModel.mergeSelectedClipWithNext() },
+                        onAddImageOverlay = {
+                            imageOverlayLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        },
+                        onReplaceAudio = { replaceAudioLauncher.launch("audio/*") },
+                        onClipFades = { viewModel.toggleClipFadesSheet(true) },
                         isReversed = uiState.selectedClip?.isReversed == true,
-                        hasKeyframe = uiState.selectedClip?.hasKeyframe == true,
+                        hasKeyframe = (uiState.selectedClip?.hasKeyframe == true) || (uiState.selectedImageOverlay?.hasKeyframe == true),
                         isChromaKeyActive = uiState.selectedClip?.isChromaKeyEnabled == true,
                         isBeatSyncActive = uiState.audioClips.any { it.isBeatSyncEnabled },
                         isDuckingActive = uiState.isAutoDuckingMasterEnabled && uiState.audioClips.any { it.isDuckingEnabled },
                         isStabilized = uiState.selectedClip?.stabilization?.isEnabled == true,
                         isSnappingActive = uiState.isSnappingEnabled,
-                        hasAppliedEffects = uiState.selectedClip?.effects?.isNotEmpty() == true
+                        hasAppliedEffects = uiState.selectedClip?.effects?.isNotEmpty() == true,
+                        hasCrop = uiState.selectedClip?.hasCrop == true
                     )
+
+                    // Inline Draggable TransitionsLibrary above MultiTrackTimeline for seamless drag-and-drop onto seams
+                    AnimatedVisibility(visible = uiState.showTransitionsLibraryPanel) {
+                        val targetSeamClip = uiState.selectedClip
+                            ?: uiState.clips.getOrNull(1)
+                            ?: uiState.clips.firstOrNull()
+                        TransitionsLibrary(
+                            selectedTransition = selectedLibraryTransition,
+                            onSelectTransition = { trans ->
+                                selectedLibraryTransition = trans
+                            },
+                            transitionDurationSec = selectedLibraryDurationSec,
+                            onDurationChange = { sec ->
+                                selectedLibraryDurationSec = sec
+                            },
+                            onDragTransitionStart = { trans, durMs, pointerPos ->
+                                selectedLibraryTransition = trans
+                                dragPointerInRoot = pointerPos
+                                viewModel.startDraggingTransition(trans, durMs)
+                            },
+                            onDragTransitionMove = { pointerPos ->
+                                dragPointerInRoot = pointerPos
+                            },
+                            onDragTransitionEnd = {
+                                val dropTargetId = dragPointerInRoot?.let { ptr ->
+                                    resolveTransitionDropTarget(ptr, transitionSeamBounds)
+                                }
+                                if (dropTargetId != null) {
+                                    viewModel.dropTransitionOnClip(dropTargetId)
+                                } else {
+                                    viewModel.stopDraggingTransition()
+                                }
+                                dragPointerInRoot = null
+                            },
+                            onDragTransitionCancel = {
+                                dragPointerInRoot = null
+                                viewModel.stopDraggingTransition()
+                            },
+                            onApplyToSelectedClip = {
+                                targetSeamClip?.let {
+                                    viewModel.setTransition(
+                                        it.id,
+                                        selectedLibraryTransition,
+                                        (selectedLibraryDurationSec * 1000f).toLong()
+                                    )
+                                }
+                            },
+                            onApplyToAllClips = {
+                                viewModel.applyTransitionToAllClips(
+                                    selectedLibraryTransition,
+                                    (selectedLibraryDurationSec * 1000f).toLong()
+                                )
+                            },
+                            onOpenFullInspector = { viewModel.toggleTransitionSheet(true) },
+                            onClose = { viewModel.toggleTransitionsLibraryPanel(false) },
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
 
                     // Zone 3: Bottom Zone (Multi-Track Precision Timeline - Thumb reachable)
                     MultiTrackTimeline(
@@ -578,6 +874,7 @@ fun EditorScreen(
                         textOverlays = uiState.textOverlays,
                         stickers = uiState.stickers,
                         shapes = uiState.shapes,
+                        imageOverlays = uiState.imageOverlays,
                         currentPositionMs = uiState.currentPositionMs,
                         totalDurationMs = uiState.totalDurationMs,
                         selectedClipId = uiState.selectedClipId,
@@ -585,6 +882,7 @@ fun EditorScreen(
                         selectedTextId = uiState.selectedTextId,
                         selectedStickerId = uiState.selectedStickerId,
                         selectedShapeId = uiState.selectedShapeId,
+                        selectedImageOverlayId = uiState.selectedImageOverlayId,
                         timelineZoom = uiState.timelineZoom,
                         onSeek = { viewModel.seekTo(it) },
                         onSelectClip = { viewModel.selectClip(it) },
@@ -592,6 +890,7 @@ fun EditorScreen(
                         onSelectText = { viewModel.selectText(it) },
                         onSelectSticker = { viewModel.selectSticker(it) },
                         onSelectShape = { viewModel.selectShape(it) },
+                        onSelectImageOverlay = { viewModel.selectImageOverlay(it) },
                         onZoomChange = { viewModel.setZoom(it) },
                         onAddMediaClick = { viewModel.toggleMediaPicker(true) },
                         onSelectTransitionClick = { clipId ->
@@ -603,8 +902,21 @@ fun EditorScreen(
                         onReorderClips = { from, to -> viewModel.reorderClips(from, to) },
                         onOpenPrecisionScrubber = { viewModel.togglePrecisionScrubber(true) },
                         draggingTransition = uiState.draggingTransition,
-                        onDropTransition = { clipId, transition -> viewModel.dropTransitionOnClip(clipId) },
-                        onCancelDragTransition = { viewModel.stopDraggingTransition() },
+                        hoveredDropClipId = hoveredIntersectionClipId,
+                        onDropTransition = { clipId, _ ->
+                            dragPointerInRoot = null
+                            viewModel.dropTransitionOnClip(clipId)
+                        },
+                        onCancelDragTransition = {
+                            dragPointerInRoot = null
+                            viewModel.stopDraggingTransition()
+                        },
+                        onReportTransitionSeamBounds = { clipId, rect ->
+                            transitionSeamBounds[clipId] = rect
+                        },
+                        onClearTransitionSeamBounds = { clipId ->
+                            transitionSeamBounds.remove(clipId)
+                        },
                         timelineMarkers = uiState.timelineMarkers,
                         onAddCueMarker = { viewModel.addTimelineCueMarker() },
                         onDeleteCueMarker = { viewModel.deleteTimelineCueMarker(it) },
@@ -650,6 +962,20 @@ fun EditorScreen(
                 }
             }
         }
+
+            // Floating drag preview above all panes when dragging a transition onto clip intersections
+            val draggingTrans = uiState.draggingTransition
+            val activeDragPtr = dragPointerInRoot
+            if (draggingTrans != null && activeDragPtr != null) {
+                TransitionDragGhostOverlay(
+                    transition = draggingTrans,
+                    durationMs = uiState.transitionDragDurationMs,
+                    pointerInRoot = activeDragPtr,
+                    rootOriginInRoot = rootOriginInRoot,
+                    hoveredClipId = hoveredIntersectionClipId
+                )
+            }
+        }
     }
 
     // Modal Sheets Integration
@@ -658,7 +984,15 @@ fun EditorScreen(
             onDismiss = { viewModel.toggleMediaPicker(false) },
             onSelectSample = { viewModel.addSampleClip(it) },
             onImportDeviceVideo = { uri, name -> viewModel.addCustomMediaClip(uri, name) },
-            onGenerateTestVideo = { viewModel.addDeviceTestVideoClip() }
+            onGenerateTestVideo = { viewModel.addDeviceTestVideoClip() },
+            onImportMultipleVideos = { uris ->
+                viewModel.importMultipleDeviceVideos(uris, addToCurrentTimeline = true)
+            },
+            onImportImageOverlay = { uri, name ->
+                viewModel.addImageOverlayFromUri(uri.toString(), name)
+            },
+            importProgress = uiState.importProgress,
+            onCancelImport = { viewModel.cancelImport() }
         )
     }
 
@@ -719,36 +1053,6 @@ fun EditorScreen(
                 viewModel.stopDraggingTransition()
             },
             onDismiss = { viewModel.toggleTransitionSheet(false) }
-        )
-    }
-
-    if (uiState.showTransitionsLibraryPanel) {
-        val selClip = uiState.selectedClip ?: uiState.clips.firstOrNull()
-        val selTrans = selClip?.transitionIn ?: TransitionType.CROSSFADE
-        val durSec = (selClip?.transitionDurationMs ?: 600L) / 1000f
-
-        TransitionsLibraryPanel(
-            selectedTransition = selTrans,
-            onSelectTransition = { trans ->
-                selClip?.let { viewModel.setTransition(it.id, trans, (durSec * 1000).toLong()) }
-            },
-            transitionDurationSec = durSec,
-            onDurationChange = { sec ->
-                selClip?.let { viewModel.setTransition(it.id, selTrans, (sec * 1000).toLong()) }
-            },
-            onStartDragTransition = { trans, durMs ->
-                viewModel.startDraggingTransition(trans, durMs)
-            },
-            onStopDragTransition = {
-                viewModel.stopDraggingTransition()
-            },
-            onApplyToSelectedClip = {
-                selClip?.let { viewModel.setTransition(it.id, selTrans, (durSec * 1000).toLong()) }
-            },
-            onApplyToAllClips = {
-                viewModel.applyTransitionToAllClips(selTrans, (durSec * 1000).toLong())
-            },
-            onClose = { viewModel.toggleTransitionsLibraryPanel(false) }
         )
     }
 
@@ -849,17 +1153,32 @@ fun EditorScreen(
         )
     }
 
-    if (uiState.showKeyframeSheet && uiState.selectedClip != null) {
-        val clip = uiState.selectedClip!!
+    val keyframeSheetClip = uiState.selectedClip ?: uiState.selectedImageOverlay?.let { img ->
+        com.example.data.model.VideoClip(
+            id = img.id,
+            name = img.name,
+            uri = img.uri,
+            sourceDurationMs = img.durationMs,
+            timelineStartMs = img.timelineStartMs,
+            keyframes = img.keyframes,
+            hasKeyframe = img.hasKeyframe,
+            scale = img.scale,
+            rotation = img.rotation,
+            alpha = img.alpha,
+            positionX = img.positionX,
+            positionY = img.positionY
+        )
+    }
+    if (uiState.showKeyframeSheet && keyframeSheetClip != null) {
         KeyframePropertyEditorSheet(
-            clip = clip,
+            clip = keyframeSheetClip,
             currentTimelinePositionMs = uiState.currentPositionMs,
             onDismiss = { viewModel.toggleKeyframeSheet(false) },
-            onAddKeyframe = { kf -> viewModel.addKeyframe(clip.id, kf) },
-            onUpdateKeyframe = { kf -> viewModel.updateKeyframe(clip.id, kf) },
-            onRemoveKeyframe = { kfId -> viewModel.removeKeyframe(clip.id, kfId) },
-            onApplyPreset = { preset -> viewModel.applyKeyframePreset(clip.id, preset) },
-            onClearKeyframes = { viewModel.clearAllKeyframes(clip.id) },
+            onAddKeyframe = { kf -> viewModel.addKeyframe(keyframeSheetClip.id, kf) },
+            onUpdateKeyframe = { kf -> viewModel.updateKeyframe(keyframeSheetClip.id, kf) },
+            onRemoveKeyframe = { kfId -> viewModel.removeKeyframe(keyframeSheetClip.id, kfId) },
+            onApplyPreset = { preset -> viewModel.applyKeyframePreset(keyframeSheetClip.id, preset) },
+            onClearKeyframes = { viewModel.clearAllKeyframes(keyframeSheetClip.id) },
             onSeekTimeline = { timeMs -> viewModel.seekTo(timeMs) }
         )
     }
@@ -1028,6 +1347,91 @@ fun EditorScreen(
                 showRenameDialog = false
             }
         )
+    }
+
+    if (uiState.showCropResizeSheet && uiState.selectedClip != null) {
+        val clip = uiState.selectedClip!!
+        CropAndResizeSheet(
+            clip = clip,
+            onDismiss = { viewModel.toggleCropResizeSheet(false) },
+            onApplyCrop = { l, t, r, b -> viewModel.updateClipCrop(clip.id, l, t, r, b) },
+            onResetCrop = { viewModel.resetClipCrop(clip.id) },
+            onApplyResize = { w, h -> viewModel.updateClipResize(clip.id, w, h) }
+        )
+    }
+
+    if (uiState.showClipFadesSheet && uiState.selectedClip != null) {
+        val clip = uiState.selectedClip!!
+        ClipAudioFadesSheet(
+            clip = clip,
+            onDismiss = { viewModel.toggleClipFadesSheet(false) },
+            onUpdateFades = { fIn, fOut -> viewModel.updateClipAudioFades(clip.id, fIn, fOut) },
+            onUpdateClipVolume = { vol, muted -> viewModel.setClipVolume(clip.id, vol, muted) }
+        )
+    }
+
+    if (uiState.showDiagnosticsDialog) {
+        DiagnosticsSheet(
+            onDismiss = { viewModel.toggleDiagnosticsDialog(false) }
+        )
+    }
+
+    if (uiState.showFullscreenPreview) {
+        FullscreenPreviewDialog(
+            clip = uiState.activeClipAtPlayhead ?: uiState.selectedClip ?: uiState.clips.firstOrNull(),
+            currentPositionMs = uiState.currentPositionMs,
+            totalDurationMs = uiState.totalDurationMs,
+            isPlaying = uiState.isPlaying,
+            playbackSpeed = uiState.playbackSpeed,
+            masterVolume = uiState.masterVolume,
+            onVolumeChange = { viewModel.setMasterVolume(it) },
+            onSetSpeed = { viewModel.setPlaybackSpeed(it) },
+            onTogglePlay = { viewModel.togglePlayPause() },
+            onSeek = { viewModel.seekTo(it) },
+            onDismiss = { viewModel.toggleFullscreenPreview(false) }
+        )
+    }
+
+    val capturedFramePath = uiState.capturedFrameFilePath
+    if (capturedFramePath != null) {
+        val capturedFile = remember(capturedFramePath) { File(capturedFramePath) }
+        val coroutineScope = rememberCoroutineScope()
+        val savePngLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.CreateDocument("image/png")
+        ) { destUri ->
+            if (destUri != null) {
+                coroutineScope.launch {
+                    StudioExportUtilities.copyFileToSafUri(context, capturedFile, destUri)
+                        .onSuccess {
+                            Toast.makeText(context, "Saved PNG frame to device!", Toast.LENGTH_SHORT).show()
+                        }
+                        .onFailure { err ->
+                            Toast.makeText(context, "Failed saving PNG: ${err.message}", Toast.LENGTH_SHORT).show()
+                        }
+                }
+            }
+        }
+        if (capturedFile.exists()) {
+            CapturedFramePreviewDialog(
+                frameFile = capturedFile,
+                onSaveToDevice = { savePngLauncher.launch(capturedFile.name) },
+                onShare = {
+                    val uri = Media3VideoExporter.getShareableFileUri(context, capturedFile.absolutePath)
+                    if (uri != null) {
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "image/png"
+                            putExtra(Intent.EXTRA_STREAM, uri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(Intent.createChooser(shareIntent, "Share Captured Frame"))
+                    }
+                },
+                onAddAsImageOverlay = {
+                    viewModel.insertCapturedFrameAsImageOverlay(capturedFile)
+                },
+                onDismiss = { viewModel.dismissCapturedFrame() }
+            )
+        }
     }
 }
 

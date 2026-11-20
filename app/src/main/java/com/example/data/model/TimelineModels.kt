@@ -234,11 +234,31 @@ data class VideoClip(
     // Speech & Voiceover detection for automatic audio ducking
     val hasSpeech: Boolean = false,
     // Professional DaVinci-style Color Grading (Lift/Gamma/Gain, Temp/Tint, LUTs)
-    val colorGrading: ColorGradingSettings = ColorGradingSettings()
+    val colorGrading: ColorGradingSettings = ColorGradingSettings(),
+    // Normalized Crop Bounds (0..1)
+    val cropLeft: Float = 0f,
+    val cropTop: Float = 0f,
+    val cropRight: Float = 1f,
+    val cropBottom: Float = 1f,
+    // Target Resize dimensions (0 = original/project canvas)
+    val resizeWidth: Int = 0,
+    val resizeHeight: Int = 0,
+    // Clip Audio Fade In/Out
+    val fadeInMs: Long = 0L,
+    val fadeOutMs: Long = 0L,
+    // Extracted Real Source Metadata
+    val width: Int = 0,
+    val height: Int = 0,
+    val frameRate: Float = 30f,
+    val videoCodec: String = "",
+    val mimeType: String = "",
+    val hasAudio: Boolean = true,
+    val fileSizeBytes: Long = 0L,
+    val thumbnailPath: String = ""
 ) {
     // True if this clip is a vertical video (9:16 format)
     val isVerticalVideo: Boolean
-        get() = isVertical || name.contains("Vertical", ignoreCase = true) || name.contains("Reel", ignoreCase = true) || name.contains("Short", ignoreCase = true) || name.contains("TikTok", ignoreCase = true) || name.contains("Espresso", ignoreCase = true)
+        get() = isVertical || (height > width && width > 0) || name.contains("Vertical", ignoreCase = true) || name.contains("Reel", ignoreCase = true) || name.contains("Short", ignoreCase = true) || name.contains("TikTok", ignoreCase = true) || name.contains("Espresso", ignoreCase = true)
 
     // Effective playback duration on the timeline based on trim and speed
     val trimmedDurationMs: Long
@@ -246,6 +266,9 @@ data class VideoClip(
 
     val timelineEndMs: Long
         get() = timelineStartMs + trimmedDurationMs
+
+    val hasCrop: Boolean
+        get() = cropLeft > 0.005f || cropTop > 0.005f || cropRight < 0.995f || cropBottom < 0.995f
 }
 
 data class AudioTrackItem(
@@ -332,5 +355,48 @@ data class VisualSnapTarget(
     val label: String,
     val type: SnapTargetType,
     val colorHex: Long = 0xFF00E5FF
+)
+
+data class ImageOverlay(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String = "Image Overlay",
+    val uri: String,
+    val timelineStartMs: Long = 0L,
+    val durationMs: Long = 4000L,
+    val positionX: Float = 0.5f,
+    val positionY: Float = 0.5f,
+    val scale: Float = 0.4f,
+    val rotation: Float = 0f,
+    val alpha: Float = 1.0f,
+    val keyframes: List<OpenShotKeyframe> = emptyList(),
+    val hasKeyframe: Boolean = false
+) {
+    val timelineEndMs: Long
+        get() = timelineStartMs + durationMs
+}
+
+data class ImportProgressState(
+    val isImporting: Boolean = false,
+    val currentFileName: String = "",
+    val currentIndex: Int = 0,
+    val totalCount: Int = 0,
+    val progress: Float = 0f,
+    val stageLabel: String = "",
+    val errorMessage: String? = null
+)
+
+enum class DiagnosticSeverity {
+    INFO,
+    WARNING,
+    ERROR
+}
+
+data class DiagnosticLogEntry(
+    val id: String = UUID.randomUUID().toString(),
+    val timestampMs: Long = System.currentTimeMillis(),
+    val category: String,
+    val severity: DiagnosticSeverity,
+    val message: String,
+    val details: String = ""
 )
 

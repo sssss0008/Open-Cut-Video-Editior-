@@ -70,10 +70,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.net.Uri
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material3.LinearProgressIndicator
 import com.example.data.model.AspectRatio
 import com.example.data.model.AudioCategory
 import com.example.data.model.AudioTrackItem
 import com.example.data.model.CanvasBgMode
+import com.example.data.model.ImportProgressState
 import com.example.data.model.SampleAudio
 import com.example.data.model.SampleMediaRepository
 import com.example.data.model.SampleVideo
@@ -94,20 +98,40 @@ fun MediaPickerSheet(
     onDismiss: () -> Unit,
     onSelectSample: (SampleVideo) -> Unit,
     onImportDeviceVideo: (uriString: String, name: String) -> Unit,
-    onGenerateTestVideo: (() -> Unit)? = null
+    onGenerateTestVideo: (() -> Unit)? = null,
+    onImportMultipleVideos: ((List<Uri>) -> Unit)? = null,
+    onImportImageOverlay: ((Uri, String) -> Unit)? = null,
+    importProgress: ImportProgressState = ImportProgressState(),
+    onCancelImport: () -> Unit = {}
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = androidx.compose.ui.platform.LocalContext.current
 
-    // Android zero-permission photo/video picker (Gallery)
+    // Android zero-permission multi-video picker (Gallery)
     val videoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            if (onImportMultipleVideos != null) {
+                onImportMultipleVideos(uris)
+            } else {
+                val first = uris.first()
+                val fileName = com.example.util.DeviceMediaImporter.resolveFileName(context, first).ifBlank {
+                    first.lastPathSegment?.split("/")?.lastOrNull() ?: "Device Video"
+                }
+                onImportDeviceVideo(first.toString(), fileName)
+            }
+            onDismiss()
+        }
+    }
+
+    // Android Photo / Image Overlay picker (Gallery)
+    val imageOverlayPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
-            val fileName = com.example.util.DeviceMediaImporter.resolveFileName(context, uri).ifBlank {
-                uri.lastPathSegment?.split("/")?.lastOrNull() ?: "Device Video"
-            }
-            onImportDeviceVideo(uri.toString(), fileName)
+            val fileName = com.example.util.DeviceMediaImporter.resolveFileName(context, uri).ifBlank { "Image Overlay" }
+            onImportImageOverlay?.invoke(uri, fileName)
             onDismiss()
         }
     }
@@ -117,10 +141,14 @@ fun MediaPickerSheet(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) {
-            val fileName = com.example.util.DeviceMediaImporter.resolveFileName(context, uri).ifBlank {
-                uri.lastPathSegment?.split("/")?.lastOrNull() ?: "Imported Video"
+            if (onImportMultipleVideos != null) {
+                onImportMultipleVideos(listOf(uri))
+            } else {
+                val fileName = com.example.util.DeviceMediaImporter.resolveFileName(context, uri).ifBlank {
+                    uri.lastPathSegment?.split("/")?.lastOrNull() ?: "Imported Video"
+                }
+                onImportDeviceVideo(uri.toString(), fileName)
             }
-            onImportDeviceVideo(uri.toString(), fileName)
             onDismiss()
         }
     }
@@ -141,7 +169,7 @@ fun MediaPickerSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Add Video Clip",
+                    text = "Import Media & Clips",
                     color = Color.White,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
@@ -151,9 +179,63 @@ fun MediaPickerSheet(
                 }
             }
 
+            if (importProgress.isImporting) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFF0E1B2E),
+                    border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp)
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = importProgress.stageLabel.ifBlank { "Importing ${importProgress.currentFileName}..." },
+                                color = AccentCyan,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(onClick = onCancelImport) {
+                                Text("Cancel", color = Color(0xFFEF4444), fontSize = 11.sp)
+                            }
+                        }
+                        LinearProgressIndicator(
+                            progress = { importProgress.progress.coerceIn(0.05f, 1f) },
+                            color = AccentCyan,
+                            trackColor = Color(0xFF1E293B),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            } else if (importProgress.errorMessage != null) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFF450A0A),
+                    border = BorderStroke(1.dp, Color(0xFFEF4444)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp)
+                ) {
+                    Text(
+                        text = importProgress.errorMessage!!,
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(10.dp)
+                    )
+                }
+            }
+
             var showSampleClips by remember { mutableStateOf(false) }
 
-            // Option 1: Gallery (Photo Picker)
+            // Option 1: Multi-Video Gallery (Photo Picker)
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = StudioCardDark,
@@ -242,6 +324,55 @@ fun MediaPickerSheet(
                         )
                     }
                     Icon(Icons.Default.Add, contentDescription = "Browse", tint = Color(0xFF818CF8))
+                }
+            }
+
+            // Option 2b: Add Photo / Image Overlay (PIP)
+            if (onImportImageOverlay != null) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = StudioCardDark,
+                    border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .clickable {
+                            imageOverlayPicker.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        }
+                        .testTag("import_image_overlay_button")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFF0EA5E9).copy(alpha = 0.2f),
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Image, "Image Overlay", tint = Color(0xFF38BDF8), modifier = Modifier.size(24.dp))
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Add Photo / Graphic Overlay (PIP)",
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Overlay PNG/JPG photos or channel logos onto timeline",
+                                color = Color.LightGray,
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                        Icon(Icons.Default.Add, contentDescription = "Add Photo", tint = Color(0xFF38BDF8))
+                    }
                 }
             }
 

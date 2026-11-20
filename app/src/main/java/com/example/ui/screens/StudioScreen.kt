@@ -1,7 +1,11 @@
 package com.example.ui.screens
 
 import android.content.Intent
-import androidx.compose.animation.AnimatedVisibility
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,29 +17,32 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Audiotrack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.Loop
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -47,10 +54,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,12 +70,23 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import com.example.data.db.ExportPresetEntity
+import com.example.data.model.AspectRatio
+import com.example.data.model.ExportBitrate
 import com.example.data.model.ExportResolution
+import com.example.data.model.ExportStage
+import com.example.data.model.ExportVideoCodec
 import com.example.data.model.RenderedVideoItem
+import com.example.data.model.SocialPlatform
+import com.example.data.model.VideoClip
+import com.example.ui.components.ExportPresetsSection
+import com.example.ui.components.ExportPreviewDialog
 import com.example.ui.components.ExportProgressComponent
+import com.example.ui.components.RealExoVideoSurface
 import com.example.ui.theme.AccentCyan
 import com.example.ui.theme.AccentEmerald
 import com.example.ui.theme.AccentPink
@@ -74,11 +94,24 @@ import com.example.ui.theme.StudioCardDark
 import com.example.ui.theme.StudioDarkBg
 import com.example.ui.theme.StudioSurfaceDark
 import com.example.ui.theme.TrackAudioColor
+import com.example.util.Media3VideoExporter
+import com.example.util.StudioExportUtilities
 import com.example.viewmodel.EditorUiState
 import com.example.viewmodel.VideoEditorViewModel
+import kotlinx.coroutines.launch
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+private enum class StudioUtilityDialogType {
+    AUDIO_EXTRACTOR,
+    ASPECT_CONVERTER,
+    BOOMERANG_LOOP,
+    VIDEO_COMPRESSOR,
+    SUBTITLE_EXPORT,
+    FCPXML_EXPORT
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -90,14 +123,92 @@ fun StudioScreen(
     onOpenDrawer: () -> Unit,
     onNavigateToEditor: () -> Unit,
     onAutoFixQuality: () -> Unit = {},
-    onRunAutomationWorkflow: (String) -> Unit = {}
+    onRunAutomationWorkflow: (String) -> Unit = {},
+    exportPresets: List<ExportPresetEntity> = emptyList(),
+    onApplyExportPreset: (ExportPresetEntity) -> Unit = {},
+    onSaveCustomExportPreset: (
+        name: String,
+        platform: SocialPlatform,
+        aspectRatio: AspectRatio,
+        resolution: ExportResolution,
+        fps: Int,
+        bitrate: ExportBitrate,
+        codec: ExportVideoCodec,
+        notes: String,
+        existingId: String?
+    ) -> Unit = { _, _, _, _, _, _, _, _, _ -> },
+    onDeleteExportPreset: (String) -> Unit = {},
+    onUpdateExportSettings: ((ExportResolution, Int, ExportBitrate, ExportVideoCodec) -> Unit)? = null,
+    onStartExportWithSettings: ((ExportResolution, Int, ExportBitrate, ExportVideoCodec) -> Unit)? = null,
+    onSaveExportToUri: (Uri) -> Unit = {},
+    onSetAspectRatio: (AspectRatio) -> Unit = {},
+    onCreateBoomerangLoop: () -> Unit = {},
+    onExtractAudioToM4a: ((Result<File>) -> Unit) -> Unit = {},
+    onDetachSelectedClipAudio: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    var selectedRes by remember { mutableStateOf(ExportResolution.RES_1080P) }
-    var selectedFps by remember { mutableIntStateOf(30) }
-    var selectedCodec by remember { mutableStateOf("H.264 (MP4)") }
-    var activeUtilityTool by remember { mutableStateOf<String?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+
+    var selectedRes by remember { mutableStateOf(uiState.exportResolution) }
+    var selectedFps by remember { mutableIntStateOf(uiState.exportFps) }
+    var selectedBitrate by remember { mutableStateOf(uiState.exportBitrate) }
+    var selectedCodec by remember { mutableStateOf(uiState.exportCodec) }
+    var activeUtilityDialog by remember { mutableStateOf<StudioUtilityDialogType?>(null) }
     var playingVideoItem by remember { mutableStateOf<RenderedVideoItem?>(null) }
+    var showStudioExportPreview by remember { mutableStateOf(false) }
+
+    // Utility dialog state
+    var subtitleFormat by remember { mutableStateOf("SRT") }
+    var pendingSafTextContent by remember { mutableStateOf<String?>(null) }
+    var extractedAudioFile by remember { mutableStateOf<File?>(null) }
+    var extractedAudioError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(
+        uiState.activeExportPresetId,
+        uiState.exportResolution,
+        uiState.exportFps,
+        uiState.exportBitrate,
+        uiState.exportCodec
+    ) {
+        selectedRes = uiState.exportResolution
+        selectedFps = uiState.exportFps
+        selectedBitrate = uiState.exportBitrate
+        selectedCodec = uiState.exportCodec
+    }
+
+    val triggerStudioExport: (ExportResolution, Int, ExportBitrate, ExportVideoCodec) -> Unit = { res, fps, bitrate, codec ->
+        if (onStartExportWithSettings != null) {
+            onStartExportWithSettings(res, fps, bitrate, codec)
+        } else {
+            onStartExport(res, fps)
+        }
+    }
+
+    val saveMp4AsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("video/mp4")
+    ) { destUri ->
+        if (destUri != null) {
+            onSaveExportToUri(destUri)
+        }
+    }
+
+    val saveTextDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/*")
+    ) { destUri ->
+        val payload = pendingSafTextContent
+        if (destUri != null && payload != null) {
+            coroutineScope.launch {
+                StudioExportUtilities.writeTextToSafUri(context, destUri, payload)
+                    .onSuccess { bytes ->
+                        Toast.makeText(context, "Saved export file ($bytes bytes)", Toast.LENGTH_SHORT).show()
+                    }
+                    .onFailure { err ->
+                        Toast.makeText(context, "Save failed: ${err.message}", Toast.LENGTH_SHORT).show()
+                    }
+                pendingSafTextContent = null
+            }
+        }
+    }
 
     val dateFormat = remember { SimpleDateFormat("MMM d, yyyy HH:mm", Locale.getDefault()) }
 
@@ -107,7 +218,7 @@ fun StudioScreen(
                 title = {
                     Column {
                         Text("Export Studio & Archive", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        Text("Rendered videos saved in phone storage", color = AccentCyan, fontSize = 11.sp)
+                        Text("Social presets, MP4 rendering & NLE tools", color = AccentCyan, fontSize = 11.sp)
                     }
                 },
                 navigationIcon = {
@@ -129,11 +240,11 @@ fun StudioScreen(
         ) {
             item { Spacer(modifier = Modifier.height(4.dp)) }
 
-            // 1. REAL-TIME EXPORT PROGRESS COMPONENT (Displayed when exporting or completed)
-            if (uiState.exportData.isExporting || uiState.exportData.completed) {
+            // 1. REAL-TIME EXPORT PROGRESS OR PRESETS + RENDER CARD
+            if (uiState.exportData.isExporting || uiState.exportData.completed || uiState.exportData.stage == ExportStage.FAILED) {
                 item {
                     Text(
-                        text = "🚀 Active Export Pipeline",
+                        text = "Active Export Pipeline",
                         color = Color.White,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
@@ -142,19 +253,75 @@ fun StudioScreen(
                     ExportProgressComponent(
                         exportData = uiState.exportData,
                         onCancelExport = onCancelExport,
-                        onDismissCompleted = {
-                            // reset completed state
-                            onCancelExport()
+                        onDismissCompleted = { onCancelExport() },
+                        onSaveAsClick = {
+                            val defaultName = uiState.exportData.outputFileName.ifBlank { "opencut_export.mp4" }
+                            saveMp4AsLauncher.launch(defaultName)
+                        },
+                        onPlayExportedClick = {
+                            val uri = Media3VideoExporter.getShareableFileUri(context, uiState.exportData.outputFilePath)
+                            if (uri != null) {
+                                val playIntent = Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(uri, "video/mp4")
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                runCatching {
+                                    context.startActivity(Intent.createChooser(playIntent, "Play Exported MP4"))
+                                }.onFailure {
+                                    Toast.makeText(context, "No compatible video player found.", Toast.LENGTH_SHORT).show()
+                                }
+                            } else {
+                                Toast.makeText(context, "Exported MP4 file not found.", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        onShareExportedClick = {
+                            val uri = Media3VideoExporter.getShareableFileUri(context, uiState.exportData.outputFilePath)
+                            if (uri != null) {
+                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "video/mp4"
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(shareIntent, "Share Exported MP4"))
+                            } else {
+                                Toast.makeText(context, "Exported MP4 file not found to share.", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     )
                 }
             } else {
-                // EXPORT TRIGGER CARD
+                // 1A. SOCIAL MEDIA EXPORT PRESETS
                 item {
+                    ExportPresetsSection(
+                        presets = exportPresets,
+                        activePresetId = uiState.activeExportPresetId,
+                        currentAspectRatio = uiState.aspectRatio,
+                        currentResolution = selectedRes,
+                        currentFps = selectedFps,
+                        currentBitrate = selectedBitrate,
+                        currentCodec = selectedCodec,
+                        onApplyPreset = { preset ->
+                            selectedRes = preset.resolution
+                            selectedFps = preset.fps
+                            selectedBitrate = preset.bitrate
+                            selectedCodec = preset.videoCodec
+                            onApplyExportPreset(preset)
+                        },
+                        onSaveCustomPreset = onSaveCustomExportPreset,
+                        onDeletePreset = onDeleteExportPreset
+                    )
+                }
+
+                // 1B. EXPORT TRIGGER CARD
+                item {
+                    val durationSec = (uiState.totalDurationMs / 1000f).coerceAtLeast(1f)
+                    val codecFactor = if (selectedCodec == ExportVideoCodec.HEVC) 0.72f else 1.0f
+                    val estSizeMb = ((durationSec * selectedBitrate.mbps) / 8f) * codecFactor
+
                     Surface(
                         shape = RoundedCornerShape(16.dp),
                         color = StudioCardDark,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2C2840)),
+                        border = BorderStroke(1.dp, Color(0xFF2C2840)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
@@ -176,7 +343,11 @@ fun StudioScreen(
                                     Spacer(modifier = Modifier.width(10.dp))
                                     Column {
                                         Text("Render Current Project", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                                        Text(uiState.currentProject?.title ?: "OpenCut Project", color = AccentCyan, fontSize = 12.sp)
+                                        Text(
+                                            text = "${uiState.currentProject?.title ?: "OpenCut Project"} • ${uiState.aspectRatio.label.split(" ").first()}",
+                                            color = AccentCyan,
+                                            fontSize = 11.sp
+                                        )
                                     }
                                 }
 
@@ -185,10 +356,10 @@ fun StudioScreen(
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(14.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
 
                             // Resolution Chips
-                            Text("Output Quality:", color = Color.LightGray, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Output Resolution:", color = Color.LightGray, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -200,13 +371,17 @@ fun StudioScreen(
                                     Surface(
                                         shape = RoundedCornerShape(10.dp),
                                         color = if (isSelected) Color(0xFF381E72) else Color(0xFF1B182B),
-                                        border = androidx.compose.foundation.BorderStroke(
+                                        border = BorderStroke(
                                             1.dp,
                                             if (isSelected) AccentCyan else Color(0xFF2E2A48)
                                         ),
                                         modifier = Modifier
                                             .weight(1f)
-                                            .clickable { selectedRes = res }
+                                            .clickable {
+                                                selectedRes = res
+                                                onUpdateExportSettings?.invoke(res, selectedFps, selectedBitrate, selectedCodec)
+                                            }
+                                            .testTag("studio_res_${res.name}")
                                     ) {
                                         Column(
                                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -228,7 +403,7 @@ fun StudioScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 6.dp),
+                                    .padding(vertical = 4.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 listOf(24, 30, 60).forEach { fps ->
@@ -238,74 +413,152 @@ fun StudioScreen(
                                         color = if (isSelected) AccentCyan else Color(0xFF1B182B),
                                         modifier = Modifier
                                             .weight(1f)
-                                            .clickable { selectedFps = fps }
+                                            .clickable {
+                                                selectedFps = fps
+                                                onUpdateExportSettings?.invoke(selectedRes, fps, selectedBitrate, selectedCodec)
+                                            }
+                                            .testTag("studio_fps_$fps")
                                     ) {
                                         Text(
                                             text = "$fps FPS",
                                             color = if (isSelected) Color.Black else Color.White,
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold,
-                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                            textAlign = TextAlign.Center,
                                             modifier = Modifier.padding(vertical = 8.dp)
                                         )
                                     }
                                 }
                             }
 
-                            // Pro Codec Chips
+                            // Bitrate Chips
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 4.dp),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                listOf("H.264 (MP4)", "HEVC H.265", "AV1 HDR", "ProRes").forEach { codec ->
-                                    val isSelected = selectedCodec == codec
+                                ExportBitrate.entries.forEach { br ->
+                                    val isSelected = selectedBitrate == br
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),
-                                        color = if (isSelected) AccentEmerald.copy(alpha = 0.22f) else Color(0xFF1B182B),
-                                        border = androidx.compose.foundation.BorderStroke(
+                                        color = if (isSelected) Color(0xFF381E72) else Color(0xFF1B182B),
+                                        border = BorderStroke(
                                             1.dp,
-                                            if (isSelected) AccentEmerald else Color(0xFF2E2A48)
+                                            if (isSelected) AccentCyan else Color(0xFF2E2A48)
                                         ),
                                         modifier = Modifier
                                             .weight(1f)
-                                            .clickable { selectedCodec = codec }
-                                            .testTag("codec_chip_${codec.take(4).lowercase()}")
+                                            .clickable {
+                                                selectedBitrate = br
+                                                onUpdateExportSettings?.invoke(selectedRes, selectedFps, br, selectedCodec)
+                                            }
+                                            .testTag("studio_bitrate_${br.name}")
                                     ) {
                                         Text(
-                                            text = codec,
-                                            color = if (isSelected) AccentEmerald else Color.LightGray,
+                                            text = "${br.mbps} Mbps",
+                                            color = if (isSelected) Color.White else Color.LightGray,
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold,
-                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                            modifier = Modifier.padding(vertical = 6.dp)
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier.padding(vertical = 7.dp)
                                         )
                                     }
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            Button(
-                                onClick = { onStartExport(selectedRes, selectedFps) },
-                                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
-                                shape = RoundedCornerShape(10.dp),
+                            // Real Hardware Codec Chips (H.264 / HEVC H.265)
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(48.dp)
-                                    .testTag("studio_start_export_button")
+                                    .padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(Icons.Default.FileDownload, "Export", tint = Color.Black, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Start Real-Time Export", color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                ExportVideoCodec.entries.forEach { codec ->
+                                    val isSelected = selectedCodec == codec
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isSelected) AccentEmerald.copy(alpha = 0.22f) else Color(0xFF1B182B),
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (isSelected) AccentEmerald else Color(0xFF2E2A48)
+                                        ),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clickable {
+                                                selectedCodec = codec
+                                                onUpdateExportSettings?.invoke(selectedRes, selectedFps, selectedBitrate, codec)
+                                            }
+                                            .testTag("codec_chip_${codec.name.lowercase()}")
+                                    ) {
+                                        Text(
+                                            text = codec.label,
+                                            color = if (isSelected) AccentEmerald else Color.LightGray,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier.padding(vertical = 7.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            Text(
+                                text = String.format(
+                                    Locale.US,
+                                    "Est. Output: ~%.1f MB • %s • %d FPS • %d Mbps",
+                                    estSizeMb,
+                                    selectedCodec.label,
+                                    selectedFps,
+                                    selectedBitrate.mbps
+                                ),
+                                color = Color.LightGray,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.padding(top = 6.dp)
+                            )
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { showStudioExportPreview = true },
+                                    enabled = uiState.clips.isNotEmpty(),
+                                    border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.75f)),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(48.dp)
+                                        .testTag("studio_export_preview_button")
+                                ) {
+                                    Icon(Icons.Default.PlayArrow, "Preview Export", tint = AccentCyan, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Preview", color = AccentCyan, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                Button(
+                                    onClick = { triggerStudioExport(selectedRes, selectedFps, selectedBitrate, selectedCodec) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier
+                                        .weight(1.4f)
+                                        .height(48.dp)
+                                        .testTag("studio_start_export_button")
+                                ) {
+                                    Icon(Icons.Default.FileDownload, "Export", tint = Color.Black, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Export MP4", color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
                 }
             }
 
-            // 1B. PRE-EXPORT PROJECT QUALITY ASSISTANT & AUTOMATION WORKFLOW RUNNER
+            // 1C. PRE-EXPORT PROJECT QUALITY ASSISTANT & AUTOMATION WORKFLOW RUNNER
             item {
                 val missingTransitionsCount = uiState.clips.drop(1).count { it.transitionIn.name == "NONE" }
                 val isDuckingReady = uiState.isAutoDuckingMasterEnabled
@@ -314,7 +567,7 @@ fun StudioScreen(
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = StudioCardDark,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, AccentEmerald.copy(alpha = 0.45f)),
+                    border = BorderStroke(1.dp, AccentEmerald.copy(alpha = 0.45f)),
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("project_quality_assistant_card")
@@ -325,15 +578,15 @@ fun StudioScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "🛡 Pre-Export Project Quality Assistant",
+                                    text = "Pre-Export Project Quality Assistant",
                                     color = Color.White,
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Automated timeline inspection for gaps, audio peaks & transitions",
+                                    text = "Automated timeline inspection for gaps, audio ducking & transitions",
                                     color = Color.LightGray,
                                     fontSize = 10.sp
                                 )
@@ -360,7 +613,7 @@ fun StudioScreen(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             listOf(
-                                "Audio Peak: -1.0 dBTP" to true,
+                                "Clips: ${uiState.clips.size} ready" to (uiState.clips.isNotEmpty()),
                                 "Auto-Ducking: ${if (isDuckingReady) "ON" else "OFF"}" to isDuckingReady,
                                 "Transitions: ${if (missingTransitionsCount == 0) "All Smooth" else "$missingTransitionsCount Hard Cuts"}" to (missingTransitionsCount == 0)
                             ).forEach { (checkLabel, passed) ->
@@ -387,14 +640,13 @@ fun StudioScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             OutlinedButton(
-                                onClick = {
-                                    onAutoFixQuality()
-                                },
+                                onClick = onAutoFixQuality,
                                 modifier = Modifier
                                     .weight(1f)
+                                    .height(48.dp)
                                     .testTag("auto_fix_quality_button")
                             ) {
-                                Text("✨ Auto-Fix Timeline Issues", color = AccentEmerald, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("Auto-Fix Issues", color = AccentEmerald, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                             Button(
                                 onClick = {
@@ -403,9 +655,10 @@ fun StudioScreen(
                                 colors = ButtonDefaults.buttonColors(containerColor = AccentPink),
                                 modifier = Modifier
                                     .weight(1f)
+                                    .height(48.dp)
                                     .testTag("run_macro_workflow_button")
                             ) {
-                                Text("⚡ Run Pro Macro", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("Run Pro Macro", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -430,7 +683,7 @@ fun StudioScreen(
                         )
                     }
                     Text(
-                        text = "100% Local Storage",
+                        text = "Persisted on Disk",
                         color = AccentEmerald,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold
@@ -460,10 +713,10 @@ fun StudioScreen(
                                 modifier = Modifier.padding(top = 8.dp)
                             )
                             Text(
-                                text = "When you export projects, the final rendered videos are preserved right here on your phone.",
+                                text = "When you export projects, the rendered MP4 videos are saved right here on your phone.",
                                 color = Color.Gray,
                                 fontSize = 11.sp,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                textAlign = TextAlign.Center,
                                 modifier = Modifier.padding(top = 4.dp)
                             )
                         }
@@ -476,22 +729,31 @@ fun StudioScreen(
                         formattedDate = dateFormat.format(Date(video.createdAt)),
                         onPlay = { playingVideoItem = video },
                         onShare = {
-                            val sendIntent = Intent().apply {
-                                action = Intent.ACTION_SEND
-                                putExtra(Intent.EXTRA_TEXT, "Exported with OpenCut Studio: ${video.fileName}")
-                                type = "text/plain"
+                            val shareUri = if (video.localUri.startsWith("content://")) {
+                                Uri.parse(video.localUri)
+                            } else {
+                                Media3VideoExporter.getShareableFileUri(context, video.localUri)
                             }
-                            context.startActivity(Intent.createChooser(sendIntent, "Share Video"))
+                            if (shareUri != null) {
+                                val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "video/mp4"
+                                    putExtra(Intent.EXTRA_STREAM, shareUri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(sendIntent, "Share Video"))
+                            } else {
+                                Toast.makeText(context, "Exported MP4 file not found on device.", Toast.LENGTH_SHORT).show()
+                            }
                         },
                         onDelete = { onDeleteRenderedVideo(video.id) }
                     )
                 }
             }
 
-            // 3. QUICK VIDEO UTILITIES & DESKTOP NLE INTERCHANGE SUITE
+            // 3. FUNCTIONAL STUDIO UTILITIES & DESKTOP NLE INTERCHANGE SUITE
             item {
                 Text(
-                    text = "🛠 Studio Utilities & Desktop Interchange",
+                    text = "Studio Utilities & Desktop Interchange",
                     color = Color.White,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
@@ -506,20 +768,28 @@ fun StudioScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         StudioUtilityCard(
-                            title = "Audio Detacher",
-                            desc = "Extract WAV / MP3 / FLAC",
+                            title = "Audio Extractor",
+                            desc = "Export M4A or detach clip audio",
                             icon = Icons.Default.Audiotrack,
                             accent = TrackAudioColor,
-                            onClick = { activeUtilityTool = "Audio Detacher (WAV / MP3 / FLAC)" },
-                            modifier = Modifier.weight(1f)
+                            onClick = {
+                                extractedAudioFile = null
+                                extractedAudioError = null
+                                activeUtilityDialog = StudioUtilityDialogType.AUDIO_EXTRACTOR
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("utility_audio_extractor")
                         )
                         StudioUtilityCard(
                             title = "Aspect Converter",
-                            desc = "Reformat 16:9 to 9:16 Shorts",
+                            desc = "Switch 16:9, 9:16, 4:5 & 1:1",
                             icon = Icons.Default.AspectRatio,
                             accent = AccentCyan,
-                            onClick = onNavigateToEditor,
-                            modifier = Modifier.weight(1f)
+                            onClick = { activeUtilityDialog = StudioUtilityDialogType.ASPECT_CONVERTER },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("utility_aspect_converter")
                         )
                     }
                     Row(
@@ -527,20 +797,24 @@ fun StudioScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         StudioUtilityCard(
-                            title = "GIF & Loop Maker",
-                            desc = "Convert timeline clip to GIF",
-                            icon = Icons.Default.Movie,
+                            title = "Boomerang Loop",
+                            desc = "Build forward + reverse clip loop",
+                            icon = Icons.Default.Loop,
                             accent = AccentPink,
-                            onClick = { activeUtilityTool = "GIF & Boomerang Maker" },
-                            modifier = Modifier.weight(1f)
+                            onClick = { activeUtilityDialog = StudioUtilityDialogType.BOOMERANG_LOOP },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("utility_boomerang_loop")
                         )
                         StudioUtilityCard(
                             title = "Video Compressor",
-                            desc = "Shrink MP4 size by up to 70%",
+                            desc = "Export compact 480p/720p MP4",
                             icon = Icons.Default.Speed,
                             accent = AccentEmerald,
-                            onClick = { activeUtilityTool = "Smart Video Compressor" },
-                            modifier = Modifier.weight(1f)
+                            onClick = { activeUtilityDialog = StudioUtilityDialogType.VIDEO_COMPRESSOR },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("utility_video_compressor")
                         )
                     }
                     Row(
@@ -549,19 +823,23 @@ fun StudioScreen(
                     ) {
                         StudioUtilityCard(
                             title = "SRT / VTT Export",
-                            desc = "Export subtitle caption file",
+                            desc = "Save real subtitle caption file",
                             icon = Icons.Default.FileDownload,
                             accent = AccentCyan,
-                            onClick = { activeUtilityTool = "SRT & VTT Subtitle Exporter" },
-                            modifier = Modifier.weight(1f)
+                            onClick = { activeUtilityDialog = StudioUtilityDialogType.SUBTITLE_EXPORT },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("utility_subtitle_export")
                         )
                         StudioUtilityCard(
-                            title = "FCPXML / OTIO",
-                            desc = "DaVinci & Premiere XML export",
+                            title = "FCPXML Export",
+                            desc = "DaVinci & Final Cut XML file",
                             icon = Icons.Default.Share,
                             accent = Color(0xFF8B5CF6),
-                            onClick = { activeUtilityTool = "Desktop NLE Interchange (FCPXML / EDL / OTIO)" },
-                            modifier = Modifier.weight(1f)
+                            onClick = { activeUtilityDialog = StudioUtilityDialogType.FCPXML_EXPORT },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("utility_fcpxml_export")
                         )
                     }
                 }
@@ -571,90 +849,568 @@ fun StudioScreen(
         }
     }
 
-    if (activeUtilityTool != null) {
-        val toolName = activeUtilityTool!!
-        val projectTitle = uiState.currentProject?.title ?: "OpenCut_Project"
-        val previewPayload = when {
-            toolName.contains("FCPXML") -> "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE fcpxml>\n<fcpxml version=\"1.10\">\n  <project name=\"$projectTitle\" clips=\"${uiState.clips.size}\" duration=\"${uiState.totalDurationMs}ms\"/>\n</fcpxml>"
-            toolName.contains("SRT") -> "1\n00:00:00,000 --> 00:00:03,000\n${uiState.textOverlays.firstOrNull()?.text ?: "Welcome to $projectTitle"}\n\n2\n00:00:03,000 --> 00:00:06,500\nEdited in OpenCut Studio Pro"
-            toolName.contains("Compressor") -> "Input: ${uiState.clips.size} clips (~24.6 MB)\nTarget Codec: HEVC H.265 CRF 24\nEstimated Output: 7.4 MB (70% reduction, zero visual loss)"
-            toolName.contains("GIF") -> "Format: High-Color 256-Palette Animated GIF\nFrame Rate: 15 FPS • Loop: Infinite\nOutput: ${projectTitle.lowercase().replace(" ", "_")}_loop.gif"
-            else -> "Track: Master Stereo 48kHz 24-bit PCM\nFormats Available: WAV (Lossless), MP3 (320kbps), FLAC\nOutput: ${projectTitle.lowercase().replace(" ", "_")}_master_audio.wav"
-        }
-
-        androidx.compose.ui.window.Dialog(onDismissRequest = { activeUtilityTool = null }) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = Color(0xFF141222),
-                border = androidx.compose.foundation.BorderStroke(1.dp, AccentCyan),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp)
-                    .testTag("studio_utility_dialog")
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(toolName, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Project: $projectTitle • Ready for instant local export",
-                        color = AccentCyan,
-                        fontSize = 11.sp
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFF0B0F19),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF28354E)),
-                        modifier = Modifier.fillMaxWidth()
+    // FUNCTIONAL STUDIO UTILITY DIALOGS
+    when (activeUtilityDialog) {
+        StudioUtilityDialogType.AUDIO_EXTRACTOR -> {
+            Dialog(onDismissRequest = { activeUtilityDialog = null }) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = StudioSurfaceDark,
+                    border = BorderStroke(1.dp, TrackAudioColor),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("studio_utility_dialog")
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
+                        Text("Audio Extractor & Detacher", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         Text(
-                            text = previewPayload,
-                            color = AccentEmerald,
-                            fontSize = 10.sp,
-                            fontFamily = FontFamily.Monospace,
-                            modifier = Modifier.padding(10.dp)
+                            text = "Extract the timeline's mixed audio track to a shareable AAC (.m4a) file via Media3, or detach the selected clip's audio onto your timeline.",
+                            color = Color.LightGray,
+                            fontSize = 11.sp
                         )
-                    }
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = { activeUtilityTool = null },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Close", color = Color.LightGray)
+
+                        if (uiState.isExtractingAudio) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.padding(vertical = 6.dp)
+                            ) {
+                                CircularProgressIndicator(color = TrackAudioColor, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                Text("Extracting AAC audio track...", color = AccentCyan, fontSize = 12.sp)
+                            }
                         }
+
+                        extractedAudioFile?.let { audioFile ->
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFF0F2922),
+                                border = BorderStroke(1.dp, AccentEmerald.copy(alpha = 0.5f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Extracted ${audioFile.name}", color = AccentEmerald, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Text("${audioFile.length() / 1024} KB • AAC M4A", color = Color.LightGray, fontSize = 10.sp)
+                                    }
+                                    TextButton(onClick = {
+                                        val shareUri = Media3VideoExporter.getShareableFileUri(context, audioFile.absolutePath)
+                                        if (shareUri != null) {
+                                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                type = "audio/mp4"
+                                                putExtra(Intent.EXTRA_STREAM, shareUri)
+                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                            }
+                                            context.startActivity(Intent.createChooser(shareIntent, "Share Audio M4A"))
+                                        }
+                                    }) {
+                                        Text("Share", color = AccentCyan, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+
+                        extractedAudioError?.let { err ->
+                            Text(err, color = AccentPink, fontSize = 11.sp)
+                        }
+
                         Button(
                             onClick = {
-                                val sendIntent = Intent().apply {
-                                    action = Intent.ACTION_SEND
-                                    putExtra(Intent.EXTRA_TEXT, previewPayload)
-                                    type = "text/plain"
+                                extractedAudioError = null
+                                onExtractAudioToM4a { result ->
+                                    result.onSuccess { file ->
+                                        extractedAudioFile = file
+                                    }.onFailure { err ->
+                                        extractedAudioError = err.message ?: "Audio extraction failed."
+                                    }
                                 }
-                                context.startActivity(Intent.createChooser(sendIntent, "Export $toolName"))
-                                activeUtilityTool = null
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
-                            modifier = Modifier.weight(1f)
+                            enabled = uiState.clips.isNotEmpty() && !uiState.isExtractingAudio,
+                            colors = ButtonDefaults.buttonColors(containerColor = TrackAudioColor),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .testTag("extract_m4a_action_button")
                         ) {
-                            Text("Export / Share", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("Extract Project Audio (.M4A)", color = Color.Black, fontWeight = FontWeight.Bold)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                onDetachSelectedClipAudio()
+                                activeUtilityDialog = null
+                                onNavigateToEditor()
+                            },
+                            enabled = uiState.clips.isNotEmpty(),
+                            border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.7f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .testTag("detach_clip_audio_action_button")
+                        ) {
+                            Text("Detach Clip Audio to Timeline", color = AccentCyan, fontWeight = FontWeight.Bold)
+                        }
+
+                        TextButton(
+                            onClick = { activeUtilityDialog = null },
+                            modifier = Modifier.align(Alignment.End)
+                        ) {
+                            Text("Close", color = Color.LightGray)
                         }
                     }
                 }
             }
         }
+
+        StudioUtilityDialogType.ASPECT_CONVERTER -> {
+            Dialog(onDismissRequest = { activeUtilityDialog = null }) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = StudioSurfaceDark,
+                    border = BorderStroke(1.dp, AccentCyan),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("studio_utility_dialog")
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("Aspect Ratio Converter", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = "Reformat canvas immediately for your target platform:",
+                            color = Color.LightGray,
+                            fontSize = 11.sp
+                        )
+                        AspectRatio.entries.forEach { aspect ->
+                            val isSelected = uiState.aspectRatio == aspect
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isSelected) AccentCyan.copy(alpha = 0.18f) else StudioCardDark,
+                                border = BorderStroke(1.dp, if (isSelected) AccentCyan else Color(0xFF2C2840)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onSetAspectRatio(aspect)
+                                        Toast.makeText(context, "Canvas updated to ${aspect.label}", Toast.LENGTH_SHORT).show()
+                                    }
+                                    .testTag("aspect_dialog_option_${aspect.name}")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(aspect.label, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    if (isSelected) {
+                                        Text("ACTIVE", color = AccentCyan, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { activeUtilityDialog = null },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                            ) {
+                                Text("Done", color = Color.LightGray)
+                            }
+                            Button(
+                                onClick = {
+                                    activeUtilityDialog = null
+                                    onNavigateToEditor()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                            ) {
+                                Text("Open Editor", color = Color.Black, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        StudioUtilityDialogType.BOOMERANG_LOOP -> {
+            val targetClip = uiState.clips.find { it.id == uiState.selectedClipId } ?: uiState.clips.firstOrNull()
+            Dialog(onDismissRequest = { activeUtilityDialog = null }) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = StudioSurfaceDark,
+                    border = BorderStroke(1.dp, AccentPink),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("studio_utility_dialog")
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text("Boomerang & Loop Maker", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = if (targetClip != null) {
+                                "Creates a snappy 1.5x forward + reversed clip loop from '${targetClip.name}' directly on your timeline with a smooth dissolve."
+                            } else {
+                                "Import or add a video clip on your timeline first to build a Boomerang loop."
+                            },
+                            color = Color.LightGray,
+                            fontSize = 12.sp
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { activeUtilityDialog = null },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                            ) {
+                                Text("Cancel", color = Color.LightGray)
+                            }
+                            Button(
+                                onClick = {
+                                    onCreateBoomerangLoop()
+                                    activeUtilityDialog = null
+                                    onNavigateToEditor()
+                                },
+                                enabled = targetClip != null,
+                                colors = ButtonDefaults.buttonColors(containerColor = AccentPink),
+                                modifier = Modifier
+                                    .weight(1.3f)
+                                    .height(48.dp)
+                                    .testTag("create_boomerang_confirm_button")
+                            ) {
+                                Text("Create Loop", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        StudioUtilityDialogType.VIDEO_COMPRESSOR -> {
+            val durationSec = (uiState.totalDurationMs / 1000f).coerceAtLeast(1f)
+            val profiles = listOf(
+                Triple("Compact Chat (480p • 2 Mbps H.264)", ExportResolution.RES_480P, Pair(ExportBitrate.LOW_2M, ExportVideoCodec.H264)),
+                Triple("Social Saver (720p • 2 Mbps HEVC)", ExportResolution.RES_720P, Pair(ExportBitrate.LOW_2M, ExportVideoCodec.HEVC)),
+                Triple("Balanced HD (1080p • 5 Mbps HEVC)", ExportResolution.RES_1080P, Pair(ExportBitrate.MEDIUM_5M, ExportVideoCodec.HEVC))
+            )
+            Dialog(onDismissRequest = { activeUtilityDialog = null }) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = StudioSurfaceDark,
+                    border = BorderStroke(1.dp, AccentEmerald),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("studio_utility_dialog")
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text("Smart Video Compressor", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = "Pick a compression profile to render a lightweight MP4 right now via Media3 Transformer:",
+                            color = Color.LightGray,
+                            fontSize = 11.sp
+                        )
+                        profiles.forEachIndexed { idx, (label, res, spec) ->
+                            val (br, codec) = spec
+                            val estMb = ((durationSec * br.mbps) / 8f) * if (codec == ExportVideoCodec.HEVC) 0.72f else 1.0f
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = StudioCardDark,
+                                border = BorderStroke(1.dp, AccentEmerald.copy(alpha = 0.5f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(enabled = uiState.clips.isNotEmpty()) {
+                                        activeUtilityDialog = null
+                                        triggerStudioExport(res, 30, br, codec)
+                                    }
+                                    .testTag("compress_profile_$idx")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            text = String.format(Locale.US, "Estimated size: ~%.1f MB", estMb),
+                                            color = AccentEmerald,
+                                            fontSize = 10.sp,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                    }
+                                    Text("RENDER", color = AccentCyan, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
+                                }
+                            }
+                        }
+                        if (uiState.clips.isEmpty()) {
+                            Text("Add a video clip on the timeline to compress.", color = AccentPink, fontSize = 11.sp)
+                        }
+                        TextButton(
+                            onClick = { activeUtilityDialog = null },
+                            modifier = Modifier.align(Alignment.End)
+                        ) {
+                            Text("Close", color = Color.LightGray)
+                        }
+                    }
+                }
+            }
+        }
+
+        StudioUtilityDialogType.SUBTITLE_EXPORT -> {
+            val projectTitle = uiState.currentProject?.title ?: "OpenCut_Project"
+            val safeBase = projectTitle.lowercase(Locale.US).replace("[^a-z0-9]+".toRegex(), "_").trim('_').ifBlank { "opencut" }
+            val captionContent = if (subtitleFormat == "SRT") {
+                StudioExportUtilities.generateSrtContent(uiState.textOverlays, projectTitle)
+            } else {
+                StudioExportUtilities.generateVttContent(uiState.textOverlays, projectTitle)
+            }
+            val fileExt = if (subtitleFormat == "SRT") "srt" else "vtt"
+            val fileName = "${safeBase}_captions.$fileExt"
+
+            Dialog(onDismissRequest = { activeUtilityDialog = null }) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = StudioSurfaceDark,
+                    border = BorderStroke(1.dp, AccentCyan),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("studio_utility_dialog")
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text("Subtitle Caption Export", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf("SRT", "VTT").forEach { fmt ->
+                                val sel = subtitleFormat == fmt
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (sel) AccentCyan else StudioCardDark,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { subtitleFormat = fmt }
+                                        .testTag("subtitle_fmt_$fmt")
+                                ) {
+                                    Text(
+                                        text = if (fmt == "SRT") "SubRip (.srt)" else "WebVTT (.vtt)",
+                                        color = if (sel) Color.Black else Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.padding(vertical = 8.dp)
+                                    )
+                                }
+                            }
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFF0B0F19),
+                            border = BorderStroke(1.dp, Color(0xFF28354E)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 180.dp)
+                        ) {
+                            Text(
+                                text = captionContent,
+                                color = AccentEmerald,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(10.dp)
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    pendingSafTextContent = captionContent
+                                    saveTextDocumentLauncher.launch(fileName)
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .testTag("save_subtitle_file_button")
+                            ) {
+                                Text("Save File", color = AccentCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Button(
+                                onClick = {
+                                    coroutineScope.launch {
+                                        StudioExportUtilities.writeStudioTextExport(context, fileName, captionContent)
+                                            .onSuccess { file ->
+                                                val uri = Media3VideoExporter.getShareableFileUri(context, file.absolutePath)
+                                                if (uri != null) {
+                                                    val intent = Intent(Intent.ACTION_SEND).apply {
+                                                        type = if (fileExt == "vtt") "text/vtt" else "application/x-subrip"
+                                                        putExtra(Intent.EXTRA_STREAM, uri)
+                                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                    }
+                                                    context.startActivity(Intent.createChooser(intent, "Share $fileName"))
+                                                }
+                                            }
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .testTag("share_subtitle_file_button")
+                            ) {
+                                Text("Share .$fileExt", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        TextButton(
+                            onClick = { activeUtilityDialog = null },
+                            modifier = Modifier.align(Alignment.End)
+                        ) {
+                            Text("Close", color = Color.LightGray)
+                        }
+                    }
+                }
+            }
+        }
+
+        StudioUtilityDialogType.FCPXML_EXPORT -> {
+            val projectTitle = uiState.currentProject?.title ?: "OpenCut_Project"
+            val safeBase = projectTitle.lowercase(Locale.US).replace("[^a-z0-9]+".toRegex(), "_").trim('_').ifBlank { "opencut" }
+            val fcpxmlContent = StudioExportUtilities.generateFcpxmlContent(
+                project = uiState.currentProject,
+                clips = uiState.clips,
+                audioClips = uiState.audioClips,
+                textOverlays = uiState.textOverlays,
+                aspectRatio = uiState.aspectRatio,
+                fps = selectedFps
+            )
+            val fileName = "${safeBase}_timeline.fcpxml"
+
+            Dialog(onDismissRequest = { activeUtilityDialog = null }) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = StudioSurfaceDark,
+                    border = BorderStroke(1.dp, Color(0xFF8B5CF6)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("studio_utility_dialog")
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text("FCPXML v1.10 Timeline Export", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = "Compatible with Final Cut Pro, DaVinci Resolve & Premiere Pro.",
+                            color = Color.LightGray,
+                            fontSize = 11.sp
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFF0B0F19),
+                            border = BorderStroke(1.dp, Color(0xFF28354E)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 200.dp)
+                        ) {
+                            Text(
+                                text = fcpxmlContent,
+                                color = AccentEmerald,
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(10.dp)
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    pendingSafTextContent = fcpxmlContent
+                                    saveTextDocumentLauncher.launch(fileName)
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .testTag("save_fcpxml_file_button")
+                            ) {
+                                Text("Save XML", color = AccentCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Button(
+                                onClick = {
+                                    coroutineScope.launch {
+                                        StudioExportUtilities.writeStudioTextExport(context, fileName, fcpxmlContent)
+                                            .onSuccess { file ->
+                                                val uri = Media3VideoExporter.getShareableFileUri(context, file.absolutePath)
+                                                if (uri != null) {
+                                                    val intent = Intent(Intent.ACTION_SEND).apply {
+                                                        type = "application/xml"
+                                                        putExtra(Intent.EXTRA_STREAM, uri)
+                                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                    }
+                                                    context.startActivity(Intent.createChooser(intent, "Share $fileName"))
+                                                }
+                                            }
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6)),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .testTag("share_fcpxml_file_button")
+                            ) {
+                                Text("Share XML", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        TextButton(
+                            onClick = { activeUtilityDialog = null },
+                            modifier = Modifier.align(Alignment.End)
+                        ) {
+                            Text("Close", color = Color.LightGray)
+                        }
+                    }
+                }
+            }
+        }
+
+        null -> Unit
     }
 
     // Video Player Playback Dialog
     if (playingVideoItem != null) {
         val video = playingVideoItem!!
-        androidx.compose.ui.window.Dialog(onDismissRequest = { playingVideoItem = null }) {
+        Dialog(onDismissRequest = { playingVideoItem = null }) {
             Surface(
                 shape = RoundedCornerShape(16.dp),
                 color = Color(0xFF141222),
-                border = androidx.compose.foundation.BorderStroke(1.dp, AccentCyan),
+                border = BorderStroke(1.dp, AccentCyan),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp)
@@ -668,32 +1424,42 @@ fun StudioScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(video.title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(video.title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                         IconButton(onClick = { playingVideoItem = null }) {
-                            Icon(Icons.Default.Movie, "Close", tint = Color.LightGray)
+                            Icon(Icons.Default.Close, "Close", tint = Color.LightGray)
                         }
                     }
 
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(180.dp)
+                            .height(210.dp)
                             .clip(RoundedCornerShape(8.dp))
                             .background(Color.Black),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.PlayArrow, "Playing", tint = AccentCyan, modifier = Modifier.size(54.dp))
-                        Text(
-                            text = "Simulated On-Device Video Playback",
-                            color = Color.LightGray,
-                            fontSize = 11.sp,
-                            modifier = Modifier.align(Alignment.BottomCenter).padding(8.dp)
+                        val previewClip = remember(video.id, video.localUri) {
+                            VideoClip(
+                                id = video.id,
+                                name = video.fileName,
+                                uri = video.localUri,
+                                sourceDurationMs = video.durationMs.coerceAtLeast(1000L)
+                            )
+                        }
+                        RealExoVideoSurface(
+                            clip = previewClip,
+                            currentPositionMs = 0L,
+                            isPlaying = true,
+                            playbackSpeed = 1.0f,
+                            isVideoTrackMuted = false,
+                            masterVolume = 1.0f,
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "${video.resolution} • ${video.fps} FPS • ${VideoEditorViewModel.formatTime(video.durationMs)} • ${(video.fileSizeBytes / (1024 * 1024))} MB",
+                        text = "${video.resolution} • ${video.fps} FPS • ${VideoEditorViewModel.formatTime(video.durationMs)} • ${String.format(Locale.US, "%.1f MB", video.fileSizeBytes / (1024f * 1024f))}",
                         color = Color.LightGray,
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace
@@ -703,13 +1469,29 @@ fun StudioScreen(
                     Button(
                         onClick = { playingVideoItem = null },
                         colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
                     ) {
                         Text("Close Player", color = Color.Black, fontWeight = FontWeight.Bold)
                     }
                 }
             }
         }
+    }
+
+    if (showStudioExportPreview) {
+        ExportPreviewDialog(
+            uiState = uiState,
+            selectedResolution = selectedRes,
+            selectedFps = selectedFps,
+            selectedBitrate = selectedBitrate,
+            onDismiss = { showStudioExportPreview = false },
+            onConfirmExport = {
+                showStudioExportPreview = false
+                triggerStudioExport(selectedRes, selectedFps, selectedBitrate, selectedCodec)
+            }
+        )
     }
 }
 
@@ -724,7 +1506,7 @@ fun RenderedVideoCard(
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = StudioCardDark,
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2C2840)),
+        border = BorderStroke(1.dp, Color(0xFF2C2840)),
         modifier = Modifier
             .fillMaxWidth()
             .testTag("rendered_video_${video.id}")
@@ -750,7 +1532,7 @@ fun RenderedVideoCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(video.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                 Text(
-                    text = "${video.resolution} • ${video.fps}fps • ${(video.fileSizeBytes / (1024 * 1024))}MB",
+                    text = "${video.resolution} • ${video.fps}fps • ${String.format(Locale.US, "%.1fMB", video.fileSizeBytes / (1024f * 1024f))}",
                     color = AccentCyan,
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace,
@@ -765,11 +1547,11 @@ fun RenderedVideoCard(
             }
 
             Row {
-                IconButton(onClick = onShare, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Default.Share, "Share", tint = AccentCyan, modifier = Modifier.size(16.dp))
+                IconButton(onClick = onShare, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Default.Share, "Share", tint = AccentCyan, modifier = Modifier.size(18.dp))
                 }
-                IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Default.Delete, "Delete", tint = Color(0xFFFF5252), modifier = Modifier.size(16.dp))
+                IconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Default.Delete, "Delete", tint = Color(0xFFFF5252), modifier = Modifier.size(18.dp))
                 }
             }
         }
@@ -788,7 +1570,7 @@ fun StudioUtilityCard(
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = StudioCardDark,
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2C2840)),
+        border = BorderStroke(1.dp, Color(0xFF2C2840)),
         modifier = modifier
             .clickable { onClick() }
             .padding(vertical = 4.dp)

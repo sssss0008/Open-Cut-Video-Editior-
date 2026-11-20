@@ -48,7 +48,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Hub
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.MergeType
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -64,6 +66,7 @@ fun EditToolstrip(
     hasSelectedText: Boolean,
     hasSelectedSticker: Boolean,
     hasSelectedShape: Boolean = false,
+    hasSelectedImageOverlay: Boolean = false,
     onSplit: () -> Unit,
     onTrim: () -> Unit,
     onSpeed: () -> Unit,
@@ -96,6 +99,11 @@ fun EditToolstrip(
     onPrecisionScrubber: () -> Unit = {},
     onColorGrade: () -> Unit = {},
     onAiMagic: () -> Unit = {},
+    onCropResize: () -> Unit = {},
+    onMergeNext: () -> Unit = {},
+    onAddImageOverlay: () -> Unit = {},
+    onReplaceAudio: () -> Unit = {},
+    onClipFades: () -> Unit = {},
     isReversed: Boolean = false,
     hasKeyframe: Boolean = false,
     isChromaKeyActive: Boolean = false,
@@ -104,6 +112,7 @@ fun EditToolstrip(
     isStabilized: Boolean = false,
     isSnappingActive: Boolean = true,
     hasAppliedEffects: Boolean = false,
+    hasCrop: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -360,7 +369,7 @@ fun EditToolstrip(
                 icon = Icons.Default.Timeline,
                 label = if (hasKeyframe) "Keyframes ●" else "Keyframes",
                 accentColor = if (hasKeyframe) AccentCyan else Color.White,
-                enabled = hasSelectedClip,
+                enabled = hasSelectedClip || hasSelectedImageOverlay,
                 testTag = "tool_keyframe",
                 onClick = onKeyframe
             )
@@ -404,6 +413,56 @@ fun EditToolstrip(
                 onClick = onAddMusic
             )
 
+            // Crop & Resize Clip
+            ToolButton(
+                icon = Icons.Default.Crop,
+                label = if (hasCrop) "Cropped ●" else "Crop/Size",
+                accentColor = if (hasCrop) AccentCyan else Color.White,
+                enabled = hasSelectedClip,
+                testTag = "tool_crop_resize",
+                onClick = onCropResize
+            )
+
+            // Merge Clip with Next
+            ToolButton(
+                icon = Icons.Default.MergeType,
+                label = "Merge",
+                accentColor = Color(0xFF38BDF8),
+                enabled = hasSelectedClip,
+                testTag = "tool_merge",
+                onClick = onMergeNext
+            )
+
+            // Add Photo / Image Overlay (PIP)
+            ToolButton(
+                icon = Icons.Default.Image,
+                label = "Photo PIP",
+                accentColor = Color(0xFF38BDF8),
+                enabled = true,
+                testTag = "tool_add_photo",
+                onClick = onAddImageOverlay
+            )
+
+            // Replace Clip Audio Track
+            ToolButton(
+                icon = Icons.Default.MusicNote,
+                label = "Replace Aud",
+                accentColor = Color(0xFF10B981),
+                enabled = hasSelectedClip,
+                testTag = "tool_replace_audio",
+                onClick = onReplaceAudio
+            )
+
+            // Clip Audio Fade-In / Fade-Out
+            ToolButton(
+                icon = Icons.Default.GraphicEq,
+                label = "Fades",
+                accentColor = Color.White,
+                enabled = hasSelectedClip,
+                testTag = "tool_clip_fades",
+                onClick = onClipFades
+            )
+
             // Reorder Left / Right
             if (hasSelectedClip) {
                 ToolButton(
@@ -430,7 +489,7 @@ fun EditToolstrip(
             }
 
             // Delete selected item
-            val canDelete = hasSelectedClip || hasSelectedAudio || hasSelectedText || hasSelectedSticker || hasSelectedShape
+            val canDelete = hasSelectedClip || hasSelectedAudio || hasSelectedText || hasSelectedSticker || hasSelectedShape || hasSelectedImageOverlay
             ToolButton(
                 icon = Icons.Default.Delete,
                 label = "Delete",

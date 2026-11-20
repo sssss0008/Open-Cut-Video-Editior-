@@ -3,6 +3,7 @@ package com.example.data.db
 import com.example.data.model.AudioCategory
 import com.example.data.model.AudioFadeType
 import com.example.data.model.AudioTrackItem
+import com.example.data.model.ImageOverlay
 import com.example.data.model.KeyframeCurve
 import com.example.data.model.OpenShotKeyframe
 import com.example.data.model.OverlaySticker
@@ -27,7 +28,8 @@ data class TimelineData(
     val audioClips: List<AudioTrackItem>,
     val textOverlays: List<TextOverlay>,
     val stickers: List<OverlaySticker>,
-    val shapes: List<ShapeOverlay> = emptyList()
+    val shapes: List<ShapeOverlay> = emptyList(),
+    val imageOverlays: List<ImageOverlay> = emptyList()
 )
 
 object TimelineSerializer {
@@ -73,6 +75,22 @@ object TimelineSerializer {
                 put("canvasBlurRadiusDp", clip.canvasBlurRadiusDp.toDouble())
                 put("canvasBgBrightness", clip.canvasBgBrightness.toDouble())
                 put("hasSpeech", clip.hasSpeech)
+                put("cropLeft", clip.cropLeft.toDouble())
+                put("cropTop", clip.cropTop.toDouble())
+                put("cropRight", clip.cropRight.toDouble())
+                put("cropBottom", clip.cropBottom.toDouble())
+                put("resizeWidth", clip.resizeWidth)
+                put("resizeHeight", clip.resizeHeight)
+                put("fadeInMs", clip.fadeInMs)
+                put("fadeOutMs", clip.fadeOutMs)
+                put("width", clip.width)
+                put("height", clip.height)
+                put("frameRate", clip.frameRate.toDouble())
+                put("videoCodec", clip.videoCodec)
+                put("mimeType", clip.mimeType)
+                put("hasAudio", clip.hasAudio)
+                put("fileSizeBytes", clip.fileSizeBytes)
+                put("thumbnailPath", clip.thumbnailPath)
                 // Color Grading
                 val cgObj = JSONObject().apply {
                     put("exposure", clip.colorGrading.exposure.toDouble())
@@ -226,6 +244,39 @@ object TimelineSerializer {
             shapesArray.put(obj)
         }
         root.put("shapes", shapesArray)
+
+        val imagesArray = JSONArray()
+        data.imageOverlays.forEach { img ->
+            val obj = JSONObject().apply {
+                put("id", img.id)
+                put("name", img.name)
+                put("uri", img.uri)
+                put("timelineStartMs", img.timelineStartMs)
+                put("durationMs", img.durationMs)
+                put("positionX", img.positionX.toDouble())
+                put("positionY", img.positionY.toDouble())
+                put("scale", img.scale.toDouble())
+                put("rotation", img.rotation.toDouble())
+                put("alpha", img.alpha.toDouble())
+                put("hasKeyframe", img.hasKeyframe)
+                val kfArray = JSONArray()
+                img.keyframes.forEach { kf ->
+                    kfArray.put(JSONObject().apply {
+                        put("id", kf.id)
+                        put("timeOffsetMs", kf.timeOffsetMs)
+                        put("scale", kf.scale.toDouble())
+                        put("rotation", kf.rotation.toDouble())
+                        put("alpha", kf.alpha.toDouble())
+                        put("positionX", kf.positionX.toDouble())
+                        put("positionY", kf.positionY.toDouble())
+                        put("curve", kf.curve.name)
+                    })
+                }
+                put("keyframes", kfArray)
+            }
+            imagesArray.put(obj)
+        }
+        root.put("imageOverlays", imagesArray)
 
         return root.toString()
     }
@@ -386,7 +437,23 @@ object TimelineSerializer {
                             canvasBlurRadiusDp = obj.optDouble("canvasBlurRadiusDp", 25.0).toFloat(),
                             canvasBgBrightness = obj.optDouble("canvasBgBrightness", 0.65).toFloat(),
                             hasSpeech = obj.optBoolean("hasSpeech", false),
-                            colorGrading = colorGradingSettings
+                            colorGrading = colorGradingSettings,
+                            cropLeft = obj.optDouble("cropLeft", 0.0).toFloat(),
+                            cropTop = obj.optDouble("cropTop", 0.0).toFloat(),
+                            cropRight = obj.optDouble("cropRight", 1.0).toFloat(),
+                            cropBottom = obj.optDouble("cropBottom", 1.0).toFloat(),
+                            resizeWidth = obj.optInt("resizeWidth", 0),
+                            resizeHeight = obj.optInt("resizeHeight", 0),
+                            fadeInMs = obj.optLong("fadeInMs", 0L),
+                            fadeOutMs = obj.optLong("fadeOutMs", 0L),
+                            width = obj.optInt("width", 0),
+                            height = obj.optInt("height", 0),
+                            frameRate = obj.optDouble("frameRate", 30.0).toFloat(),
+                            videoCodec = obj.optString("videoCodec", ""),
+                            mimeType = obj.optString("mimeType", ""),
+                            hasAudio = obj.optBoolean("hasAudio", true),
+                            fileSizeBytes = obj.optLong("fileSizeBytes", 0L),
+                            thumbnailPath = obj.optString("thumbnailPath", "")
                         )
                     )
                 }
@@ -523,9 +590,56 @@ object TimelineSerializer {
                 }
             }
 
-            TimelineData(clips, audioClips, textOverlays, stickers, shapes)
+            val imageOverlays = mutableListOf<ImageOverlay>()
+            val imagesArray = root.optJSONArray("imageOverlays")
+            if (imagesArray != null) {
+                for (i in 0 until imagesArray.length()) {
+                    val obj = imagesArray.getJSONObject(i)
+                    val imgKeyframes = mutableListOf<OpenShotKeyframe>()
+                    val kfArray = obj.optJSONArray("keyframes")
+                    if (kfArray != null) {
+                        for (j in 0 until kfArray.length()) {
+                            val kObj = kfArray.getJSONObject(j)
+                            imgKeyframes.add(
+                                OpenShotKeyframe(
+                                    id = kObj.optString("id", UUID.randomUUID().toString()),
+                                    timeOffsetMs = kObj.optLong("timeOffsetMs", 0L),
+                                    scale = kObj.optDouble("scale", 0.4).toFloat(),
+                                    rotation = kObj.optDouble("rotation", 0.0).toFloat(),
+                                    alpha = kObj.optDouble("alpha", 1.0).toFloat(),
+                                    positionX = kObj.optDouble("positionX", 0.5).toFloat(),
+                                    positionY = kObj.optDouble("positionY", 0.5).toFloat(),
+                                    curve = try {
+                                        KeyframeCurve.valueOf(kObj.optString("curve", "BEZIER"))
+                                    } catch (_: Exception) {
+                                        KeyframeCurve.BEZIER
+                                    }
+                                )
+                            )
+                        }
+                    }
+                    imageOverlays.add(
+                        ImageOverlay(
+                            id = obj.getString("id"),
+                            name = obj.optString("name", "Image Overlay"),
+                            uri = obj.optString("uri", ""),
+                            timelineStartMs = obj.optLong("timelineStartMs", 0L),
+                            durationMs = obj.optLong("durationMs", 4000L),
+                            positionX = obj.optDouble("positionX", 0.5).toFloat(),
+                            positionY = obj.optDouble("positionY", 0.5).toFloat(),
+                            scale = obj.optDouble("scale", 0.4).toFloat(),
+                            rotation = obj.optDouble("rotation", 0.0).toFloat(),
+                            alpha = obj.optDouble("alpha", 1.0).toFloat(),
+                            keyframes = imgKeyframes,
+                            hasKeyframe = obj.optBoolean("hasKeyframe", imgKeyframes.isNotEmpty())
+                        )
+                    )
+                }
+            }
+
+            TimelineData(clips, audioClips, textOverlays, stickers, shapes, imageOverlays)
         } catch (e: Exception) {
-            TimelineData(emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
+            TimelineData(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
         }
     }
 }

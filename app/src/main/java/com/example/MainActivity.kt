@@ -38,7 +38,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.data.model.EditorWorkspace
 import com.example.ui.components.AppNavigationDrawer
+import com.example.ui.components.PlaybackVerificationDialog
 import com.example.ui.screens.AccountAnalyticsScreen
 import com.example.ui.screens.EditorScreen
 import com.example.ui.screens.ExportScreen
@@ -73,6 +75,7 @@ class MainActivity : ComponentActivity() {
                     val viewModel: VideoEditorViewModel = viewModel()
                     val projects by viewModel.projects.collectAsState()
                     val importedMedia by viewModel.importedMedia.collectAsState()
+                    val exportPresets by viewModel.exportPresets.collectAsState()
                     val uiState by viewModel.uiState.collectAsState()
 
                     var currentTab by remember { mutableStateOf(AppTab.HOME) }
@@ -98,12 +101,33 @@ class MainActivity : ComponentActivity() {
                             AppNavigationDrawer(
                                 projectCount = projects.size,
                                 renderedVideoCount = uiState.renderedVideos.size,
+                                storageUsageBytes = uiState.storageUsageBytes,
+                                isSnappingEnabled = uiState.isSnappingEnabled,
+                                onToggleSnapping = { enabled ->
+                                    if (uiState.isSnappingEnabled != enabled) {
+                                        viewModel.toggleSnapping()
+                                    }
+                                },
                                 onCloseDrawer = { coroutineScope.launch { drawerState.close() } },
                                 onNavigateTab = { tabIdx ->
                                     currentTab = AppTab.entries[tabIdx]
                                 },
+                                onOpenTransitions = {
+                                    currentTab = AppTab.EDIT
+                                    if (uiState.currentProject == null && projects.isNotEmpty()) {
+                                        viewModel.openProject(projects.first().id)
+                                    }
+                                    viewModel.toggleTransitionsLibraryPanel(true)
+                                },
+                                onOpenColorStudio = {
+                                    currentTab = AppTab.EDIT
+                                    if (uiState.currentProject == null && projects.isNotEmpty()) {
+                                        viewModel.openProject(projects.first().id)
+                                    }
+                                    viewModel.setWorkspace(EditorWorkspace.COLOR)
+                                },
                                 onClearCache = {
-                                    // Local cache clean
+                                    viewModel.clearTempCacheBuffers()
                                 }
                             )
                         }
@@ -164,8 +188,43 @@ class MainActivity : ComponentActivity() {
                                         onStartExport = { resolution, fps ->
                                             viewModel.startRealtimeExport(resolution, fps)
                                         },
+                                        onStartExportWithBitrate = { resolution, fps, bitrate ->
+                                            viewModel.startRealtimeExport(resolution, fps, bitrate)
+                                        },
+                                        onStartExportWithSettings = { resolution, fps, bitrate, codec ->
+                                            viewModel.startRealtimeExport(resolution, fps, bitrate, codec)
+                                        },
+                                        onSaveExportToUri = { destUri ->
+                                            viewModel.exportToSafDestination(destUri)
+                                        },
                                         onCancelExport = {
                                             viewModel.cancelExport()
+                                        },
+                                        exportPresets = exportPresets,
+                                        onApplyExportPreset = { preset ->
+                                            viewModel.applyExportPreset(preset)
+                                        },
+                                        onSaveCustomExportPreset = { name, platform, aspect, resolution, fps, bitrate, codec, notes, existingId ->
+                                            viewModel.saveCustomExportPreset(
+                                                name = name,
+                                                platform = platform,
+                                                aspectRatio = aspect,
+                                                resolution = resolution,
+                                                fps = fps,
+                                                bitrate = bitrate,
+                                                codec = codec,
+                                                notes = notes,
+                                                existingId = existingId
+                                            )
+                                        },
+                                        onDeleteExportPreset = { presetId ->
+                                            viewModel.deleteCustomExportPreset(presetId)
+                                        },
+                                        onUpdateExportSettings = { resolution, fps, bitrate, codec ->
+                                            viewModel.setExportSettings(resolution, fps, bitrate, codec)
+                                        },
+                                        onSetAspectRatio = { aspect ->
+                                            viewModel.setAspectRatio(aspect)
                                         }
                                     )
                                 } else {
@@ -186,6 +245,20 @@ class MainActivity : ComponentActivity() {
                                                         currentTab = AppTab.EDIT
                                                     }
                                                 },
+                                                onImportMultipleVideos = { uris ->
+                                                    viewModel.importMultipleDeviceVideos(
+                                                        uris = uris,
+                                                        addToCurrentTimeline = false,
+                                                        openVerificationOnFinish = true
+                                                    ) { importedList ->
+                                                        if (importedList.size > 1) {
+                                                            viewModel.requestPlaybackVerification(importedList.first())
+                                                        }
+                                                    }
+                                                },
+                                                importProgress = uiState.importProgress,
+                                                onCancelImport = { viewModel.cancelImport() },
+                                                onClearImportError = { viewModel.clearImportError() },
                                                 onGenerateTestVideo = {
                                                     viewModel.createProjectFromDeviceTestVideo {
                                                         currentTab = AppTab.EDIT
@@ -215,10 +288,12 @@ class MainActivity : ComponentActivity() {
                                                 viewModel = viewModel,
                                                 onBack = {
                                                     viewModel.pause()
+                                                    viewModel.flushAutoSave()
                                                     currentTab = AppTab.HOME
                                                 },
                                                 onNavigateExport = {
                                                     viewModel.pause()
+                                                    viewModel.flushAutoSave()
                                                     showExportFullScreen = true
                                                 }
                                             )
@@ -227,15 +302,28 @@ class MainActivity : ComponentActivity() {
                                         AppTab.LIBRARY -> {
                                             LibraryScreen(
                                                 importedMedia = importedMedia,
+                                                importProgress = uiState.importProgress,
                                                 onImportMedia = { uri, name, type ->
                                                     viewModel.importDeviceMedia(uri, name, type)
                                                 },
+                                                onImportMultipleVideos = { uris ->
+                                                    viewModel.importMultipleDeviceVideos(
+                                                        uris = uris,
+                                                        addToCurrentTimeline = false
+                                                    )
+                                                },
+                                                onCancelImport = { viewModel.cancelImport() },
+                                                onClearImportError = { viewModel.clearImportError() },
                                                 onDeleteImportedMedia = { id ->
                                                     viewModel.deleteImportedMedia(id)
                                                 },
                                                 onAddImportedToTimeline = { media ->
-                                                    viewModel.addImportedMediaToTimeline(media)
-                                                    currentTab = AppTab.EDIT
+                                                    if (media.mediaType.equals("VIDEO", ignoreCase = true) && !media.isPlaybackVerified) {
+                                                        viewModel.requestPlaybackVerification(media)
+                                                    } else {
+                                                        viewModel.addImportedMediaToTimeline(media)
+                                                        currentTab = AppTab.EDIT
+                                                    }
                                                 },
                                                 onAddSampleClip = { sample ->
                                                     viewModel.addSampleClip(sample)
@@ -283,6 +371,50 @@ class MainActivity : ComponentActivity() {
                                                 onRunAutomationWorkflow = { macroPrompt ->
                                                     viewModel.executeAiCopilotPrompt(macroPrompt)
                                                     currentTab = AppTab.EDIT
+                                                },
+                                                exportPresets = exportPresets,
+                                                onApplyExportPreset = { preset ->
+                                                    viewModel.applyExportPreset(preset)
+                                                },
+                                                onSaveCustomExportPreset = { name, platform, aspect, resolution, fps, bitrate, codec, notes, existingId ->
+                                                    viewModel.saveCustomExportPreset(
+                                                        name = name,
+                                                        platform = platform,
+                                                        aspectRatio = aspect,
+                                                        resolution = resolution,
+                                                        fps = fps,
+                                                        bitrate = bitrate,
+                                                        codec = codec,
+                                                        notes = notes,
+                                                        existingId = existingId
+                                                    )
+                                                },
+                                                onDeleteExportPreset = { presetId ->
+                                                    viewModel.deleteCustomExportPreset(presetId)
+                                                },
+                                                onUpdateExportSettings = { resolution, fps, bitrate, codec ->
+                                                    viewModel.setExportSettings(resolution, fps, bitrate, codec)
+                                                },
+                                                onStartExportWithSettings = { resolution, fps, bitrate, codec ->
+                                                    viewModel.startRealtimeExport(resolution, fps, bitrate, codec)
+                                                },
+                                                onSaveExportToUri = { destUri ->
+                                                    viewModel.exportToSafDestination(destUri)
+                                                },
+                                                onSetAspectRatio = { aspect ->
+                                                    viewModel.setAspectRatio(aspect)
+                                                },
+                                                onCreateBoomerangLoop = {
+                                                    viewModel.createBoomerangLoopOnTimeline()
+                                                },
+                                                onExtractAudioToM4a = { onComplete ->
+                                                    viewModel.extractProjectAudioToM4a(onComplete)
+                                                },
+                                                onDetachSelectedClipAudio = {
+                                                    val targetId = uiState.selectedClipId ?: uiState.clips.firstOrNull()?.id
+                                                    if (targetId != null) {
+                                                        viewModel.detachAudio(targetId)
+                                                    }
                                                 }
                                             )
                                         }
@@ -301,6 +433,23 @@ class MainActivity : ComponentActivity() {
                                             )
                                         }
                                     }
+                                }
+
+                                uiState.pendingVerificationMedia?.let { pendingMedia ->
+                                    PlaybackVerificationDialog(
+                                        media = pendingMedia,
+                                        onVerifiedAndEnterEditor = { verifiedMedia ->
+                                            viewModel.confirmMediaVerifiedAndEnterEditor(
+                                                media = verifiedMedia,
+                                                createNewProjectIfNone = currentTab == AppTab.HOME || uiState.currentProject == null
+                                            ) {
+                                                currentTab = AppTab.EDIT
+                                            }
+                                        },
+                                        onCancel = {
+                                            viewModel.dismissVerificationDialog()
+                                        }
+                                    )
                                 }
                             }
                         }

@@ -59,6 +59,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.offset
@@ -87,10 +88,29 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import android.graphics.BitmapFactory
+import android.net.Uri
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.GridOn
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.style.TextOverflow
+import com.example.data.model.AudioTrackItem
+import com.example.data.model.CompositionGuideMode
+import com.example.data.model.ImageOverlay
 import com.example.ui.theme.AccentCyan
 import com.example.ui.theme.PlayheadRed
 import com.example.ui.theme.StudioDarkBg
 import com.example.viewmodel.VideoEditorViewModel
+import java.io.File
 
 fun formatSmpteTimecode(ms: Long, fps: Int = 30): String {
     val totalFrames = (ms * fps / 1000).coerceAtLeast(0)
@@ -112,6 +132,16 @@ fun VideoPlayerView(
     activeTextOverlays: List<TextOverlay>,
     activeStickers: List<OverlaySticker>,
     activeShapes: List<ShapeOverlay> = emptyList(),
+    activeImageOverlays: List<ImageOverlay> = emptyList(),
+    audioTracks: List<AudioTrackItem> = emptyList(),
+    isVideoTrackMuted: Boolean = false,
+    isAudioTrackMuted: Boolean = false,
+    isVoiceoverActive: Boolean = false,
+    autoDuckingLevel: Float = 0.25f,
+    masterVolume: Float = 1.0f,
+    isAutoDuckingEnabled: Boolean = true,
+    onSetMasterVolume: ((Float) -> Unit)? = null,
+    onOpenFullscreen: (() -> Unit)? = null,
     isStabilizationSplitPreview: Boolean = false,
     isKeyframeOverlayActive: Boolean = false,
     onToggleKeyframeOverlay: (() -> Unit)? = null,
@@ -125,8 +155,15 @@ fun VideoPlayerView(
     onJumpCut: (Boolean) -> Unit,
     onChangeAspectRatio: () -> Unit,
     onImportVideoClick: (() -> Unit)? = null,
+    compositionGuideMode: CompositionGuideMode = CompositionGuideMode.OFF,
+    onCycleCompositionGuide: (() -> Unit)? = null,
+    onCaptureFrame: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    var isBuffering by remember(activeClip?.id, activeClip?.uri) { mutableStateOf(false) }
+    var playbackError by remember(activeClip?.id, activeClip?.uri) { mutableStateOf<String?>(null) }
+    var showVolumeSlider by remember { mutableStateOf(false) }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -167,7 +204,19 @@ fun VideoPlayerView(
                             activeTextOverlays = activeTextOverlays,
                             activeStickers = activeStickers,
                             activeShapes = activeShapes,
-                            isStabilizationSplitPreview = isStabilizationSplitPreview
+                            activeImageOverlays = activeImageOverlays,
+                            isStabilizationSplitPreview = isStabilizationSplitPreview,
+                            isPlaying = isPlaying,
+                            playbackSpeed = playbackSpeed,
+                            isVideoTrackMuted = isVideoTrackMuted,
+                            audioTracks = audioTracks,
+                            isAudioTrackMuted = isAudioTrackMuted,
+                            isVoiceoverActive = isVoiceoverActive,
+                            autoDuckingLevel = autoDuckingLevel,
+                            masterVolume = masterVolume,
+                            isAutoDuckingEnabled = isAutoDuckingEnabled,
+                            onBufferingChanged = { isBuffering = it },
+                            onPlaybackError = { playbackError = it }
                         )
                     } else {
                         // Empty timeline placeholder
@@ -209,6 +258,14 @@ fun VideoPlayerView(
                                 }
                             }
                         }
+                    }
+
+                    // Non-destructive Composition & Safe-Zone Guides Overlay
+                    if (activeClip != null && compositionGuideMode != CompositionGuideMode.OFF) {
+                        CompositionGuideOverlay(
+                            mode = compositionGuideMode,
+                            modifier = Modifier.fillMaxSize()
+                        )
                     }
 
                     // Top Zone Frosted-Glass Overlay: Clean Timecode Pill (Top-Left) & Aspect Ratio (Top-Right)
@@ -308,7 +365,7 @@ fun VideoPlayerView(
                                 }
                             }
 
-                            if (activeClip != null && onToggleKeyframeOverlay != null) {
+                            if ((activeClip != null || activeImageOverlays.isNotEmpty()) && onToggleKeyframeOverlay != null) {
                                 Surface(
                                     shape = RoundedCornerShape(14.dp),
                                     color = if (isKeyframeOverlayActive) AccentCyan.copy(alpha = 0.25f) else Color(0xCC1F2937),
@@ -331,6 +388,40 @@ fun VideoPlayerView(
                                         Text(
                                             text = "Keyframes",
                                             color = if (isKeyframeOverlayActive) AccentCyan else Color.White,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (activeClip != null && onCycleCompositionGuide != null) {
+                                val guideActive = compositionGuideMode != CompositionGuideMode.OFF
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = if (guideActive) AccentCyan.copy(alpha = 0.22f) else Color(0xCC1F2937),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp,
+                                        if (guideActive) AccentCyan else Color(0xFF374151).copy(alpha = 0.5f)
+                                    ),
+                                    modifier = Modifier
+                                        .clickable { onCycleCompositionGuide() }
+                                        .testTag("composition_guide_toggle_pill")
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.GridOn,
+                                            contentDescription = "Safe-Zone Guides",
+                                            tint = if (guideActive) AccentCyan else Color.White,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            text = compositionGuideMode.shortBadge,
+                                            color = if (guideActive) AccentCyan else Color.White,
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold
                                         )
@@ -365,8 +456,24 @@ fun VideoPlayerView(
                         }
                     }
 
-                    // Floating Center Play/Pause Indicator when paused
-                    if (!isPlaying && activeClip != null) {
+                    // Buffering spinner overlay
+                    if (isBuffering && activeClip != null) {
+                        Box(
+                            modifier = Modifier
+                                .size(54.dp)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.65f))
+                                .testTag("player_buffering_indicator"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                color = AccentCyan,
+                                strokeWidth = 3.dp,
+                                modifier = Modifier.size(30.dp)
+                            )
+                        }
+                    } else if (!isPlaying && activeClip != null) {
+                        // Floating Center Play/Pause Indicator when paused
                         Box(
                             modifier = Modifier
                                 .size(56.dp)
@@ -381,6 +488,90 @@ fun VideoPlayerView(
                                 tint = Color.White,
                                 modifier = Modifier.size(32.dp)
                             )
+                        }
+                    }
+
+                    // Bottom-Right Quick Actions: HD Frame Grab + Fullscreen Preview
+                    if (activeClip != null && (onOpenFullscreen != null || onCaptureFrame != null)) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(10.dp)
+                        ) {
+                            if (onCaptureFrame != null) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color(0xCC090A0F),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, AccentCyan.copy(alpha = 0.7f)),
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clickable { onCaptureFrame() }
+                                        .testTag("capture_hd_frame_button")
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.CameraAlt,
+                                            contentDescription = "Capture HD Still Frame",
+                                            tint = AccentCyan,
+                                            modifier = Modifier.size(17.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            if (onOpenFullscreen != null) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color(0xCC090A0F),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF374151)),
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clickable { onOpenFullscreen() }
+                                        .testTag("open_fullscreen_preview_button")
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.Fullscreen,
+                                            contentDescription = "Fullscreen Preview",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Playback Error Banner
+                    if (playbackError != null) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xEE7F1D1D),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444)),
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                                .testTag("player_error_banner")
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ErrorOutline,
+                                    contentDescription = "Playback Error",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = playbackError!!,
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
                 }
@@ -470,6 +661,61 @@ fun VideoPlayerView(
                     )
                 }
             }
+
+            if (onSetMasterVolume != null) {
+                IconButton(
+                    onClick = { showVolumeSlider = !showVolumeSlider },
+                    modifier = Modifier
+                        .size(36.dp)
+                        .testTag("player_volume_toggle")
+                ) {
+                    Icon(
+                        imageVector = if (masterVolume <= 0.01f) {
+                            Icons.AutoMirrored.Filled.VolumeOff
+                        } else {
+                            Icons.AutoMirrored.Filled.VolumeUp
+                        },
+                        contentDescription = "Master Audio Volume",
+                        tint = if (showVolumeSlider) AccentCyan else Color.LightGray,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+
+        if (showVolumeSlider && onSetMasterVolume != null) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 2.dp)
+                    .testTag("player_volume_slider_row")
+            ) {
+                Text(
+                    text = "Vol ${(masterVolume * 100).toInt()}%",
+                    color = Color.LightGray,
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.width(62.dp)
+                )
+                Slider(
+                    value = masterVolume,
+                    onValueChange = onSetMasterVolume,
+                    valueRange = 0f..1f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = AccentCyan,
+                        activeTrackColor = AccentCyan
+                    ),
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = VideoEditorViewModel.formatTime(totalDurationMs),
+                    color = Color.Gray,
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.padding(start = 8.dp)
+                )
+            }
         }
     }
 }
@@ -481,6 +727,7 @@ fun RenderVideoFrame(
     activeTextOverlays: List<TextOverlay>,
     activeStickers: List<OverlaySticker>,
     activeShapes: List<ShapeOverlay> = emptyList(),
+    activeImageOverlays: List<ImageOverlay> = emptyList(),
     isStabilizationSplitPreview: Boolean = false,
     canvasAspectRatio: AspectRatio = AspectRatio.VERTICAL_9_16
 ) {
@@ -491,6 +738,7 @@ fun RenderVideoFrame(
         activeTextOverlays = activeTextOverlays,
         activeStickers = activeStickers,
         activeShapes = activeShapes,
+        activeImageOverlays = activeImageOverlays,
         isStabilizationSplitPreview = isStabilizationSplitPreview
     )
 }
@@ -502,7 +750,19 @@ fun RenderVideoFrameContent(
     activeTextOverlays: List<TextOverlay>,
     activeStickers: List<OverlaySticker>,
     activeShapes: List<ShapeOverlay> = emptyList(),
-    isStabilizationSplitPreview: Boolean = false
+    activeImageOverlays: List<ImageOverlay> = emptyList(),
+    isStabilizationSplitPreview: Boolean = false,
+    isPlaying: Boolean = false,
+    playbackSpeed: Float = 1.0f,
+    isVideoTrackMuted: Boolean = false,
+    audioTracks: List<AudioTrackItem> = emptyList(),
+    isAudioTrackMuted: Boolean = false,
+    isVoiceoverActive: Boolean = false,
+    autoDuckingLevel: Float = 0.25f,
+    masterVolume: Float = 1.0f,
+    isAutoDuckingEnabled: Boolean = true,
+    onBufferingChanged: (Boolean) -> Unit = {},
+    onPlaybackError: (String?) -> Unit = {}
 ) {
     // Calculate clip internal progress
     val elapsedInClip = (currentPositionMs - clip.timelineStartMs).coerceAtLeast(0L)
@@ -538,13 +798,16 @@ fun RenderVideoFrameContent(
     )
 
     val context = LocalContext.current
+    val isRealLocalVideo = !clip.uri.isNullOrBlank() && !clip.uri.startsWith("sample://")
+
     val frameBitmap by produceState<android.graphics.Bitmap?>(
         initialValue = null,
         key1 = clip.uri,
-        key2 = (elapsedInClip / 120L)
+        key2 = isRealLocalVideo,
+        key3 = (elapsedInClip / 120L)
     ) {
         val uriStr = clip.uri
-        if (!uriStr.isNullOrBlank()) {
+        if (!isRealLocalVideo && !uriStr.isNullOrBlank()) {
             withContext(Dispatchers.IO) {
                 value = com.example.util.DeviceMediaImporter.extractFrameBitmap(context, uriStr, elapsedInClip)
             }
@@ -553,8 +816,13 @@ fun RenderVideoFrameContent(
         }
     }
 
-    Box(
-        modifier = Modifier
+    val outerTransformModifier = if (isRealLocalVideo) {
+        // RealExoVideoSurface already applies clip rotation, scale, cropScale, flip, and alpha
+        Modifier
+            .fillMaxSize()
+            .offset(x = (kf.positionX * 36).dp, y = (kf.positionY * 36).dp)
+    } else {
+        Modifier
             .fillMaxSize()
             .offset(x = (kf.positionX * 36).dp, y = (kf.positionY * 36).dp)
             .rotate(kf.rotation)
@@ -562,10 +830,31 @@ fun RenderVideoFrameContent(
                 scaleX = (if (clip.flipHorizontal) -effectiveScale else effectiveScale),
                 scaleY = effectiveScale
             )
-            .alpha(kf.alpha),
+            .alpha(kf.alpha)
+    }
+
+    Box(
+        modifier = outerTransformModifier,
         contentAlignment = Alignment.Center
     ) {
-        if (frameBitmap != null) {
+        if (isRealLocalVideo) {
+            RealExoVideoSurface(
+                clip = clip,
+                currentPositionMs = currentPositionMs,
+                isPlaying = isPlaying,
+                playbackSpeed = playbackSpeed,
+                isVideoTrackMuted = isVideoTrackMuted,
+                audioTracks = audioTracks,
+                isAudioTrackMuted = isAudioTrackMuted,
+                isVoiceoverActive = isVoiceoverActive,
+                autoDuckingLevel = autoDuckingLevel,
+                masterVolume = masterVolume,
+                isAutoDuckingEnabled = isAutoDuckingEnabled,
+                onBufferingChanged = onBufferingChanged,
+                onPlaybackError = onPlaybackError,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else if (frameBitmap != null) {
             Image(
                 bitmap = frameBitmap!!.asImageBitmap(),
                 contentDescription = clip.name,
@@ -580,8 +869,8 @@ fun RenderVideoFrameContent(
             val width = size.width
             val height = size.height
 
-            if (frameBitmap == null) {
-                // Base gradient from clip colors when frame bitmap is not available
+            if (!isRealLocalVideo && frameBitmap == null) {
+                // Base gradient from clip colors when real ExoPlayer or frame bitmap is not active
                 val startColor = Color(clip.accentColorHex)
                 val endColor = Color(clip.accentColorHex).copy(alpha = 0.4f)
 
@@ -873,6 +1162,11 @@ fun RenderVideoFrameContent(
             }
         }
 
+        // Render Active Image Overlays (PIP Photos / Logos with live Keyframe Animation)
+        activeImageOverlays.forEach { imageOverlay ->
+            RenderImageOverlay(imageOverlay, currentPositionMs)
+        }
+
         // Render Active Shape Overlays
         activeShapes.forEach { shape ->
             RenderShapeOverlay(shape, currentPositionMs)
@@ -886,6 +1180,76 @@ fun RenderVideoFrameContent(
         // Render Active Stickers
         activeStickers.forEach { sticker ->
             RenderSticker(sticker)
+        }
+    }
+}
+
+@Composable
+fun RenderImageOverlay(
+    overlay: ImageOverlay,
+    currentPositionMs: Long = overlay.timelineStartMs
+) {
+    val context = LocalContext.current
+    val bitmap by produceState<android.graphics.Bitmap?>(initialValue = null, key1 = overlay.uri) {
+        value = withContext(Dispatchers.IO) {
+            try {
+                if (overlay.uri.startsWith("content://")) {
+                    context.contentResolver.openInputStream(Uri.parse(overlay.uri))?.use {
+                        BitmapFactory.decodeStream(it)
+                    }
+                } else {
+                    val f = File(overlay.uri.removePrefix("file://"))
+                    if (f.exists()) BitmapFactory.decodeFile(f.absolutePath) else null
+                }
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
+    val elapsedInOverlayMs = (currentPositionMs - overlay.timelineStartMs).coerceIn(0L, overlay.durationMs.coerceAtLeast(100L))
+    val anim = interpolateKeyframes(
+        keyframes = overlay.keyframes,
+        elapsedInClipMs = elapsedInOverlayMs,
+        defaultScale = overlay.scale,
+        defaultRotation = overlay.rotation,
+        defaultAlpha = overlay.alpha,
+        defaultPosX = overlay.positionX,
+        defaultPosY = overlay.positionY
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(18.dp),
+        contentAlignment = when {
+            anim.positionY < 0.35f && anim.positionX < 0.35f -> Alignment.TopStart
+            anim.positionY < 0.35f && anim.positionX > 0.65f -> Alignment.TopEnd
+            anim.positionY < 0.35f -> Alignment.TopCenter
+            anim.positionY > 0.65f && anim.positionX < 0.35f -> Alignment.BottomStart
+            anim.positionY > 0.65f && anim.positionX > 0.65f -> Alignment.BottomEnd
+            anim.positionY > 0.65f -> Alignment.BottomCenter
+            else -> Alignment.Center
+        }
+    ) {
+        bitmap?.let { bmp ->
+            Image(
+                bitmap = bmp.asImageBitmap(),
+                contentDescription = overlay.name,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .size(110.dp)
+                    .graphicsLayer {
+                        scaleX = anim.scale.coerceIn(0.1f, 4.0f)
+                        scaleY = anim.scale.coerceIn(0.1f, 4.0f)
+                        rotationZ = anim.rotation
+                        alpha = anim.alpha.coerceIn(0f, 1f)
+                        translationX = (anim.positionX - 0.5f) * 140f
+                        translationY = (anim.positionY - 0.5f) * 140f
+                    }
+                    .clip(RoundedCornerShape(8.dp))
+                    .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+            )
         }
     }
 }

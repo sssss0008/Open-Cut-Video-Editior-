@@ -18,6 +18,12 @@ interface ImportedMediaDao {
     @Query("SELECT * FROM imported_media WHERE id = :id LIMIT 1")
     suspend fun getMediaById(id: String): ImportedMediaEntity?
 
+    @Query("SELECT * FROM imported_media WHERE (name = :name AND sizeBytes = :sizeBytes AND sizeBytes > 0) OR uri = :uri LIMIT 1")
+    suspend fun findDuplicate(name: String, sizeBytes: Long, uri: String): ImportedMediaEntity?
+
+    @Query("UPDATE imported_media SET isPlaybackVerified = :verified WHERE id = :id")
+    suspend fun setPlaybackVerified(id: String, verified: Boolean)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMedia(media: ImportedMediaEntity)
 

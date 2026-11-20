@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <files-path name="imported_videos" path="imported_videos/" />
+    <files-path name="exported_videos" path="exported_videos/" />
+    <files-path name="studio_exports" path="studio_exports/" />
+    <files-path name="device_videos" path="device_videos/" />
+    <files-path name="thumbnails" path="thumbnails/" />
+    <cache-path name="cache" path="." />
+    <external-files-path name="external_movies" path="Movies/" />
+</paths>

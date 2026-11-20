@@ -1,5 +1,7 @@
 package com.example.data.repository
 
+import com.example.data.db.ExportPresetDao
+import com.example.data.db.ExportPresetEntity
 import com.example.data.db.ImportedMediaDao
 import com.example.data.db.ImportedMediaEntity
 import com.example.data.db.ProjectDao
@@ -10,12 +12,16 @@ import com.example.data.db.ProjectLayerDao
 import com.example.data.db.ProjectLayerEntity
 import com.example.data.db.TimelineData
 import com.example.data.db.TimelineSerializer
+import com.example.data.manager.ExportPresetManager
 import com.example.data.model.AspectRatio
 import com.example.data.model.AudioCategory
 import com.example.data.model.AudioTrackItem
+import com.example.data.model.ExportBitrate
 import com.example.data.model.ExportResolution
+import com.example.data.model.ExportVideoCodec
 import com.example.data.model.OverlaySticker
 import com.example.data.model.SampleMediaRepository
+import com.example.data.model.SocialPlatform
 import com.example.data.model.TextOverlay
 import com.example.data.model.TextStylePreset
 import com.example.data.model.TransitionType
@@ -29,11 +35,15 @@ class ProjectRepository(
     private val projectDao: ProjectDao,
     private val importedMediaDao: ImportedMediaDao? = null,
     private val projectLayerDao: ProjectLayerDao? = null,
-    private val projectEditHistoryDao: ProjectEditHistoryDao? = null
+    private val projectEditHistoryDao: ProjectEditHistoryDao? = null,
+    private val exportPresetDao: ExportPresetDao? = null
 ) {
+
+    val exportPresetManager: ExportPresetManager? = exportPresetDao?.let { ExportPresetManager(it) }
 
     val allProjects: Flow<List<ProjectEntity>> = projectDao.getAllProjects()
     val allImportedMedia: Flow<List<ImportedMediaEntity>> = importedMediaDao?.getAllMedia() ?: emptyFlow()
+    val allExportPresets: Flow<List<ExportPresetEntity>> = exportPresetManager?.allPresets ?: emptyFlow()
 
     suspend fun getProject(id: String): ProjectEntity? {
         return projectDao.getProjectById(id)
@@ -58,6 +68,14 @@ class ProjectRepository(
 
     suspend fun addImportedMedia(media: ImportedMediaEntity) {
         importedMediaDao?.insertMedia(media)
+    }
+
+    suspend fun findDuplicateMedia(name: String, sizeBytes: Long, uri: String): ImportedMediaEntity? {
+        return importedMediaDao?.findDuplicate(name, sizeBytes, uri)
+    }
+
+    suspend fun setMediaPlaybackVerified(id: String, verified: Boolean) {
+        importedMediaDao?.setPlaybackVerified(id, verified)
     }
 
     suspend fun deleteImportedMedia(id: String) {
@@ -134,6 +152,23 @@ class ProjectRepository(
 
     suspend fun clearHistoryForProject(projectId: String) {
         projectEditHistoryDao?.clearHistoryForProject(projectId)
+    }
+
+    // --- Social Media Export Presets Methods (delegated to ExportPresetManager) ---
+    suspend fun getExportPresetsSync(): List<ExportPresetEntity> {
+        return exportPresetManager?.getAllPresetsSync() ?: emptyList()
+    }
+
+    suspend fun saveExportPreset(preset: ExportPresetEntity) {
+        exportPresetManager?.savePreset(preset)
+    }
+
+    suspend fun deleteExportPreset(id: String) {
+        exportPresetManager?.deleteProfile(id, allowBuiltIn = true)
+    }
+
+    suspend fun seedDefaultExportPresetsIfEmpty() {
+        exportPresetManager?.seedDefaultProfilesIfNeeded()
     }
 
     suspend fun createNewProject(

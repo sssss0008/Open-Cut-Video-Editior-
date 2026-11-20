@@ -63,6 +63,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material3.minimumInteractiveComponentSize
+import com.example.data.model.ImageOverlay
 import com.example.data.model.KeyframeCurve
 import com.example.data.model.OpenShotKeyframe
 import com.example.data.model.VideoClip
@@ -78,9 +80,9 @@ import kotlin.math.roundToInt
 
 /**
  * Keyframe Parameter Editor Overlay.
- * Allows users to adjust properties like scale, opacity, and rotation over time for selected video clips.
- * Features an interactive time scrubber with keyframe diamonds, previous/next keyframe navigation,
- * real-time parameter sliders with quick preset chips, and easing curve selection.
+ * Allows users to animate properties like opacity, scale, and rotation over time
+ * for selected video or image clips, with an interactive diamond scrubber, prev/next
+ * keyframe navigation, easing curve selector, and quick animation presets.
  */
 @Composable
 fun KeyframeParameterEditorOverlay(
@@ -98,34 +100,130 @@ fun KeyframeParameterEditorOverlay(
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    KeyframeParameterEditorOverlay(
+        targetId = clip.id,
+        targetName = clip.name,
+        targetKindLabel = "Video Clip",
+        timelineStartMs = clip.timelineStartMs,
+        targetDurationMs = clip.trimmedDurationMs,
+        keyframes = clip.keyframes,
+        defaultScale = clip.scale,
+        defaultAlpha = clip.alpha,
+        defaultRotation = clip.rotation,
+        defaultPositionX = clip.positionX,
+        defaultPositionY = clip.positionY,
+        currentTimelinePositionMs = currentTimelinePositionMs,
+        isPlaying = isPlaying,
+        onTogglePlay = onTogglePlay,
+        onSeekTimeline = onSeekTimeline,
+        onAddKeyframe = onAddKeyframe,
+        onUpdateKeyframe = onUpdateKeyframe,
+        onRemoveKeyframe = onRemoveKeyframe,
+        onApplyPreset = onApplyPreset,
+        onClearKeyframes = onClearKeyframes,
+        onOpenCurveGraphSheet = onOpenCurveGraphSheet,
+        onClose = onClose,
+        modifier = modifier
+    )
+}
+
+@Composable
+fun KeyframeParameterEditorOverlay(
+    imageOverlay: ImageOverlay,
+    currentTimelinePositionMs: Long,
+    isPlaying: Boolean,
+    onTogglePlay: () -> Unit,
+    onSeekTimeline: (Long) -> Unit,
+    onAddKeyframe: (OpenShotKeyframe) -> Unit,
+    onUpdateKeyframe: (OpenShotKeyframe) -> Unit,
+    onRemoveKeyframe: (keyframeId: String) -> Unit,
+    onApplyPreset: (presetName: String) -> Unit,
+    onClearKeyframes: () -> Unit,
+    onOpenCurveGraphSheet: () -> Unit = {},
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    KeyframeParameterEditorOverlay(
+        targetId = imageOverlay.id,
+        targetName = imageOverlay.name,
+        targetKindLabel = "Image Clip",
+        timelineStartMs = imageOverlay.timelineStartMs,
+        targetDurationMs = imageOverlay.durationMs,
+        keyframes = imageOverlay.keyframes,
+        defaultScale = imageOverlay.scale,
+        defaultAlpha = imageOverlay.alpha,
+        defaultRotation = imageOverlay.rotation,
+        defaultPositionX = imageOverlay.positionX,
+        defaultPositionY = imageOverlay.positionY,
+        currentTimelinePositionMs = currentTimelinePositionMs,
+        isPlaying = isPlaying,
+        onTogglePlay = onTogglePlay,
+        onSeekTimeline = onSeekTimeline,
+        onAddKeyframe = onAddKeyframe,
+        onUpdateKeyframe = onUpdateKeyframe,
+        onRemoveKeyframe = onRemoveKeyframe,
+        onApplyPreset = onApplyPreset,
+        onClearKeyframes = onClearKeyframes,
+        onOpenCurveGraphSheet = onOpenCurveGraphSheet,
+        onClose = onClose,
+        modifier = modifier
+    )
+}
+
+@Composable
+fun KeyframeParameterEditorOverlay(
+    targetId: String,
+    targetName: String,
+    targetKindLabel: String,
+    timelineStartMs: Long,
+    targetDurationMs: Long,
+    keyframes: List<OpenShotKeyframe>,
+    defaultScale: Float,
+    defaultAlpha: Float,
+    defaultRotation: Float,
+    defaultPositionX: Float,
+    defaultPositionY: Float,
+    currentTimelinePositionMs: Long,
+    isPlaying: Boolean,
+    onTogglePlay: () -> Unit,
+    onSeekTimeline: (Long) -> Unit,
+    onAddKeyframe: (OpenShotKeyframe) -> Unit,
+    onUpdateKeyframe: (OpenShotKeyframe) -> Unit,
+    onRemoveKeyframe: (keyframeId: String) -> Unit,
+    onApplyPreset: (presetName: String) -> Unit,
+    onClearKeyframes: () -> Unit,
+    onOpenCurveGraphSheet: () -> Unit = {},
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     val haptic = LocalHapticFeedback.current
-    val clipDurationMs = clip.trimmedDurationMs.coerceAtLeast(100L)
-    val elapsedInClipMs = (currentTimelinePositionMs - clip.timelineStartMs).coerceIn(0L, clipDurationMs)
+    val clipDurationMs = targetDurationMs.coerceAtLeast(100L)
+    val elapsedInClipMs = (currentTimelinePositionMs - timelineStartMs).coerceIn(0L, clipDurationMs)
 
     // Find active keyframe within 120ms of current playhead
-    var selectedKeyframeId by remember(clip.keyframes, elapsedInClipMs) {
+    var selectedKeyframeId by remember(targetId, keyframes, elapsedInClipMs) {
         mutableStateOf(
-            clip.keyframes.find { abs(it.timeOffsetMs - elapsedInClipMs) <= 120L }?.id
+            keyframes.find { abs(it.timeOffsetMs - elapsedInClipMs) <= 120L }?.id
         )
     }
 
-    val activeKeyframe by remember(clip.keyframes, elapsedInClipMs, selectedKeyframeId) {
+    val activeKeyframe by remember(keyframes, elapsedInClipMs, selectedKeyframeId) {
         derivedStateOf {
-            clip.keyframes.find { it.id == selectedKeyframeId }
-                ?: clip.keyframes.find { abs(it.timeOffsetMs - elapsedInClipMs) <= 120L }
+            keyframes.find { it.id == selectedKeyframeId }
+                ?: keyframes.find { abs(it.timeOffsetMs - elapsedInClipMs) <= 120L }
         }
     }
 
     // Current interpolated parameter values at the playhead
-    val interpolatedValues = remember(clip.keyframes, elapsedInClipMs, clip.scale, clip.rotation, clip.alpha) {
+    val interpolatedValues = remember(keyframes, elapsedInClipMs, defaultScale, defaultRotation, defaultAlpha, defaultPositionX, defaultPositionY) {
         interpolateKeyframes(
-            keyframes = clip.keyframes,
+            keyframes = keyframes,
             elapsedInClipMs = elapsedInClipMs,
-            defaultScale = clip.scale,
-            defaultRotation = clip.rotation,
-            defaultAlpha = clip.alpha,
-            defaultPosX = clip.positionX,
-            defaultPosY = clip.positionY
+            defaultScale = defaultScale,
+            defaultRotation = defaultRotation,
+            defaultAlpha = defaultAlpha,
+            defaultPosX = defaultPositionX,
+            defaultPosY = defaultPositionY
         )
     }
 
@@ -185,12 +283,12 @@ fun KeyframeParameterEditorOverlay(
                             Spacer(modifier = Modifier.width(6.dp))
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
-                                color = if (clip.keyframes.isNotEmpty()) AccentCyan.copy(alpha = 0.2f) else Color(0xFF1E293B),
-                                border = BorderStroke(1.dp, if (clip.keyframes.isNotEmpty()) AccentCyan else Color.DarkGray)
+                                color = if (keyframes.isNotEmpty()) AccentCyan.copy(alpha = 0.2f) else Color(0xFF1E293B),
+                                border = BorderStroke(1.dp, if (keyframes.isNotEmpty()) AccentCyan else Color.DarkGray)
                             ) {
                                 Text(
-                                    text = "${clip.keyframes.size} Keyframes",
-                                    color = if (clip.keyframes.isNotEmpty()) AccentCyan else Color.Gray,
+                                    text = "${keyframes.size} Keyframes",
+                                    color = if (keyframes.isNotEmpty()) AccentCyan else Color.Gray,
                                     fontSize = 9.sp,
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -199,23 +297,24 @@ fun KeyframeParameterEditorOverlay(
                         }
 
                         Text(
-                            text = "${clip.name} • ${String.format("%.2f", elapsedInClipMs / 1000f)}s / ${String.format("%.2f", clipDurationMs / 1000f)}s",
+                            text = "$targetKindLabel: $targetName • ${String.format("%.2f", elapsedInClipMs / 1000f)}s / ${String.format("%.2f", clipDurationMs / 1000f)}s",
                             color = Color.LightGray,
                             fontSize = 10.sp,
-                            fontFamily = FontFamily.Monospace
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1
                         )
                     }
                 }
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     // Mini Play/Pause button
                     IconButton(
                         onClick = onTogglePlay,
                         modifier = Modifier
-                            .size(32.dp)
+                            .minimumInteractiveComponentSize()
                             .testTag("keyframe_overlay_play_pause")
                     ) {
                         Icon(
@@ -230,7 +329,7 @@ fun KeyframeParameterEditorOverlay(
                     IconButton(
                         onClick = onClose,
                         modifier = Modifier
-                            .size(32.dp)
+                            .minimumInteractiveComponentSize()
                             .testTag("keyframe_overlay_close")
                     ) {
                         Icon(
@@ -249,14 +348,14 @@ fun KeyframeParameterEditorOverlay(
             KeyframeScrubberStrip(
                 clipDurationMs = clipDurationMs,
                 currentClipTimeMs = elapsedInClipMs,
-                keyframes = clip.keyframes,
+                keyframes = keyframes,
                 activeKeyframeId = activeKeyframe?.id,
                 onSeek = { targetMs ->
-                    onSeekTimeline(clip.timelineStartMs + targetMs)
+                    onSeekTimeline(timelineStartMs + targetMs)
                 },
                 onSelectKeyframe = { kf ->
                     selectedKeyframeId = kf.id
-                    onSeekTimeline(clip.timelineStartMs + kf.timeOffsetMs)
+                    onSeekTimeline(timelineStartMs + kf.timeOffsetMs)
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 }
             )
@@ -275,21 +374,23 @@ fun KeyframeParameterEditorOverlay(
                 // Jump Previous Keyframe
                 IconButton(
                     onClick = {
-                        val prev = clip.keyframes.filter { it.timeOffsetMs < elapsedInClipMs - 50L }
+                        val prev = keyframes.filter { it.timeOffsetMs < elapsedInClipMs - 50L }
                             .maxByOrNull { it.timeOffsetMs }
                         if (prev != null) {
                             selectedKeyframeId = prev.id
-                            onSeekTimeline(clip.timelineStartMs + prev.timeOffsetMs)
+                            onSeekTimeline(timelineStartMs + prev.timeOffsetMs)
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         }
                     },
-                    enabled = clip.keyframes.any { it.timeOffsetMs < elapsedInClipMs - 50L },
-                    modifier = Modifier.size(34.dp).testTag("keyframe_overlay_prev")
+                    enabled = keyframes.any { it.timeOffsetMs < elapsedInClipMs - 50L },
+                    modifier = Modifier
+                        .minimumInteractiveComponentSize()
+                        .testTag("keyframe_overlay_prev")
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Previous Keyframe",
-                        tint = if (clip.keyframes.any { it.timeOffsetMs < elapsedInClipMs - 50L }) AccentCyan else Color.DarkGray,
+                        tint = if (keyframes.any { it.timeOffsetMs < elapsedInClipMs - 50L }) AccentCyan else Color.DarkGray,
                         modifier = Modifier.size(16.dp)
                     )
                 }
@@ -306,7 +407,7 @@ fun KeyframeParameterEditorOverlay(
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
                         shape = RoundedCornerShape(16.dp),
                         modifier = Modifier
-                            .height(30.dp)
+                            .height(36.dp)
                             .testTag("keyframe_overlay_delete_btn")
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -324,8 +425,8 @@ fun KeyframeParameterEditorOverlay(
                                 scale = currentScale,
                                 rotation = currentRotation,
                                 alpha = currentOpacity,
-                                positionX = clip.positionX,
-                                positionY = clip.positionY,
+                                positionX = defaultPositionX,
+                                positionY = defaultPositionY,
                                 curve = currentCurve
                             )
                             onAddKeyframe(newKf)
@@ -335,7 +436,7 @@ fun KeyframeParameterEditorOverlay(
                         colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
                         shape = RoundedCornerShape(16.dp),
                         modifier = Modifier
-                            .height(30.dp)
+                            .height(36.dp)
                             .testTag("keyframe_overlay_add_btn")
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -349,21 +450,23 @@ fun KeyframeParameterEditorOverlay(
                 // Jump Next Keyframe
                 IconButton(
                     onClick = {
-                        val next = clip.keyframes.filter { it.timeOffsetMs > elapsedInClipMs + 50L }
+                        val next = keyframes.filter { it.timeOffsetMs > elapsedInClipMs + 50L }
                             .minByOrNull { it.timeOffsetMs }
                         if (next != null) {
                             selectedKeyframeId = next.id
-                            onSeekTimeline(clip.timelineStartMs + next.timeOffsetMs)
+                            onSeekTimeline(timelineStartMs + next.timeOffsetMs)
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         }
                     },
-                    enabled = clip.keyframes.any { it.timeOffsetMs > elapsedInClipMs + 50L },
-                    modifier = Modifier.size(34.dp).testTag("keyframe_overlay_next")
+                    enabled = keyframes.any { it.timeOffsetMs > elapsedInClipMs + 50L },
+                    modifier = Modifier
+                        .minimumInteractiveComponentSize()
+                        .testTag("keyframe_overlay_next")
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                         contentDescription = "Next Keyframe",
-                        tint = if (clip.keyframes.any { it.timeOffsetMs > elapsedInClipMs + 50L }) AccentCyan else Color.DarkGray,
+                        tint = if (keyframes.any { it.timeOffsetMs > elapsedInClipMs + 50L }) AccentCyan else Color.DarkGray,
                         modifier = Modifier.size(16.dp)
                     )
                 }
@@ -393,6 +496,8 @@ fun KeyframeParameterEditorOverlay(
                             scale = newScale,
                             rotation = currentRotation,
                             alpha = currentOpacity,
+                            positionX = defaultPositionX,
+                            positionY = defaultPositionY,
                             curve = currentCurve
                         )
                         onAddKeyframe(newKf)
@@ -425,6 +530,8 @@ fun KeyframeParameterEditorOverlay(
                             scale = currentScale,
                             rotation = currentRotation,
                             alpha = newAlpha,
+                            positionX = defaultPositionX,
+                            positionY = defaultPositionY,
                             curve = currentCurve
                         )
                         onAddKeyframe(newKf)
@@ -457,6 +564,8 @@ fun KeyframeParameterEditorOverlay(
                             scale = currentScale,
                             rotation = newRotation,
                             alpha = currentOpacity,
+                            positionX = defaultPositionX,
+                            positionY = defaultPositionY,
                             curve = currentCurve
                         )
                         onAddKeyframe(newKf)
@@ -567,7 +676,7 @@ fun KeyframeParameterEditorOverlay(
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                if (clip.keyframes.isNotEmpty()) {
+                if (keyframes.isNotEmpty()) {
                     Text(
                         text = "Clear All",
                         color = Color(0xFFEF4444),
@@ -575,7 +684,7 @@ fun KeyframeParameterEditorOverlay(
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier
                             .clickable { onClearKeyframes() }
-                            .padding(4.dp)
+                            .padding(6.dp)
                             .testTag("clear_all_keyframes_btn")
                     )
                 }

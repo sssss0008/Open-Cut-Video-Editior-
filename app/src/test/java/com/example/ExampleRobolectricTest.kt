@@ -1934,13 +1934,18 @@ class ExampleRobolectricTest {
   }
 
   @Test
-  fun `video editor viewModel imports custom media clip smoothly`() = kotlinx.coroutines.test.runTest {
+  fun `video editor viewModel imports custom media clip smoothly`(): Unit = kotlinx.coroutines.test.runTest {
     val context = ApplicationProvider.getApplicationContext<Context>() as android.app.Application
     val vm = com.example.viewmodel.VideoEditorViewModel(context)
     val initialCount = vm.uiState.value.clips.size
 
+    // Missing local file path should be rejected safely with clear status message
     vm.addCustomMediaClip("file:///sdcard/Movies/MyVacation.mp4", "MyVacation.mp4", 8000L)
-    // Yield to allow coroutine to complete
+    assertEquals(initialCount, vm.uiState.value.clips.size)
+    assertNotNull(vm.uiState.value.statusMessage)
+
+    // Valid media entry adds cleanly to timeline
+    vm.addCustomMediaClip("sample://vacation", "MyVacation.mp4", 8000L)
     kotlinx.coroutines.delay(100)
 
     val updatedClips = vm.uiState.value.clips
@@ -1950,7 +1955,840 @@ class ExampleRobolectricTest {
     assertEquals(8000L, importedClip.sourceDurationMs)
     assertEquals(8000L, importedClip.trimmedDurationMs)
   }
+
+  @Test
+  fun `media validation rejects empty missing and unsupported files`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+
+    val blankRes = com.example.util.DeviceMediaImporter.validateAndExtractVideoMetadata(context, "")
+    assertTrue(blankRes is com.example.util.MediaValidationResult.Invalid)
+
+    val missingRes = com.example.util.DeviceMediaImporter.validateAndExtractVideoMetadata(
+      context,
+      java.io.File(context.filesDir, "does_not_exist.mp4").absolutePath
+    )
+    assertTrue(missingRes is com.example.util.MediaValidationResult.Invalid)
+
+    val emptyFile = java.io.File(context.cacheDir, "empty_video.mp4").apply { writeBytes(ByteArray(0)) }
+    val emptyRes = com.example.util.DeviceMediaImporter.validateAndExtractVideoMetadata(context, emptyFile.absolutePath)
+    assertTrue(emptyRes is com.example.util.MediaValidationResult.Invalid)
+    emptyFile.delete()
+
+    val badText = java.io.File(context.cacheDir, "notes.txt").apply { writeText("hello world") }
+    val badRes = com.example.util.DeviceMediaImporter.validateAndExtractVideoMetadata(context, badText.absolutePath, "text/plain")
+    assertTrue(badRes is com.example.util.MediaValidationResult.Invalid)
+    badText.delete()
+  }
+
+  @Test
+  fun `copyUriToAppStorageWithProgress copies file and avoids duplicates`(): Unit = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val srcFile = java.io.File(context.cacheDir, "sample_source_clip.mp4").apply {
+      writeBytes(ByteArray(2048) { (it % 127).toByte() })
+    }
+    val uri = android.net.Uri.fromFile(srcFile)
+
+    val firstCopy = com.example.util.DeviceMediaImporter.copyUriToAppStorageWithProgress(
+      context = context,
+      uri = uri,
+      targetName = "UniqueCopyClip.mp4",
+      subFolder = "test_import_cache"
+    )
+    assertTrue(firstCopy.isSuccess)
+    val copiedFile = firstCopy.getOrThrow()
+    assertTrue(copiedFile.exists())
+    assertEquals(2048L, copiedFile.length())
+
+    val secondCopy = com.example.util.DeviceMediaImporter.copyUriToAppStorageWithProgress(
+      context = context,
+      uri = uri,
+      targetName = "UniqueCopyClip.mp4",
+      subFolder = "test_import_cache"
+    )
+    assertTrue(secondCopy.isSuccess)
+    assertEquals(copiedFile.absolutePath, secondCopy.getOrThrow().absolutePath)
+
+    srcFile.delete()
+    copiedFile.delete()
+    Unit
+  }
+
+  @Test
+  fun `pcm ducking processor computes fades mute and speech attenuation accurately`() {
+    val speechWindows = listOf(2000L to 5000L)
+
+    // Muted track produces 0f
+    val mutedGain = com.example.util.DuckingAndEnvelopeAudioProcessor.computeEffectiveGainAtTime(
+      baseVolume = 1.0f,
+      isMuted = true,
+      localTimeMs = 1000L,
+      trackDurationMs = 8000L,
+      fadeInMs = 500L,
+      fadeOutMs = 500L,
+      applyDucking = true,
+      duckLevel = 0.25f,
+      timelineTimeMs = 1000L,
+      speechWindowsMs = speechWindows
+    )
+    assertEquals(0f, mutedGain, 0.001f)
+
+    // Halfway through 1000ms fade-in (no speech) -> ~0.5f
+    val fadeInGain = com.example.util.DuckingAndEnvelopeAudioProcessor.computeEffectiveGainAtTime(
+      baseVolume = 1.0f,
+      isMuted = false,
+      localTimeMs = 500L,
+      trackDurationMs = 8000L,
+      fadeInMs = 1000L,
+      fadeOutMs = 1000L,
+      applyDucking = true,
+      duckLevel = 0.25f,
+      timelineTimeMs = 500L,
+      speechWindowsMs = speechWindows
+    )
+    assertEquals(0.5f, fadeInGain, 0.01f)
+
+    // Inside speech window (3000ms) -> attenuated by duckLevel (0.25f)
+    val duckedGain = com.example.util.DuckingAndEnvelopeAudioProcessor.computeEffectiveGainAtTime(
+      baseVolume = 1.0f,
+      isMuted = false,
+      localTimeMs = 3000L,
+      trackDurationMs = 8000L,
+      fadeInMs = 1000L,
+      fadeOutMs = 1000L,
+      applyDucking = true,
+      duckLevel = 0.25f,
+      timelineTimeMs = 3000L,
+      speechWindowsMs = speechWindows
+    )
+    assertEquals(0.25f, duckedGain, 0.01f)
+
+    // Halfway through 1000ms fade-out at 7500ms (outside speech) -> ~0.5f
+    val fadeOutGain = com.example.util.DuckingAndEnvelopeAudioProcessor.computeEffectiveGainAtTime(
+      baseVolume = 1.0f,
+      isMuted = false,
+      localTimeMs = 7500L,
+      trackDurationMs = 8000L,
+      fadeInMs = 1000L,
+      fadeOutMs = 1000L,
+      applyDucking = true,
+      duckLevel = 0.25f,
+      timelineTimeMs = 7500L,
+      speechWindowsMs = speechWindows
+    )
+    assertEquals(0.5f, fadeOutGain, 0.01f)
+  }
+
+  @Test
+  fun `media3 target dimensions respect aspect ratios and 16px alignment`() {
+    val (w480, h480) = com.example.util.Media3VideoExporter.resolveTargetDimensions(
+      ExportResolution.RES_480P,
+      com.example.data.model.AspectRatio.LANDSCAPE_16_9
+    )
+    assertEquals(0, w480 % 16)
+    assertEquals(0, h480 % 16)
+    assertTrue(w480 > h480)
+
+    val (wVert, hVert) = com.example.util.Media3VideoExporter.resolveTargetDimensions(
+      ExportResolution.RES_1080P,
+      com.example.data.model.AspectRatio.VERTICAL_9_16
+    )
+    assertEquals(0, wVert % 16)
+    assertEquals(0, hVert % 16)
+    assertTrue(hVert > wVert)
+
+    val (wSq, hSq) = com.example.util.Media3VideoExporter.resolveTargetDimensions(
+      ExportResolution.RES_720P,
+      com.example.data.model.AspectRatio.SQUARE_1_1
+    )
+    assertEquals(wSq, hSq)
+    assertEquals(0, wSq % 16)
+  }
+
+  @Test
+  fun `crop resize clip audio fades merge and image overlay editing update state`() {
+    val context = ApplicationProvider.getApplicationContext<Context>() as android.app.Application
+    val vm = com.example.viewmodel.VideoEditorViewModel(context)
+    vm.addCustomMediaClip("sample://clip_a", "Clip A", 6000L)
+    val firstClip = vm.uiState.value.clips.last()
+
+    // Crop & Resize & Audio Fades
+    vm.updateClipCrop(firstClip.id, 0.1f, 0.1f, 0.9f, 0.85f)
+    vm.updateClipResize(firstClip.id, 1280, 720)
+    vm.updateClipAudioFades(firstClip.id, 750L, 1200L)
+    val editedClip = vm.uiState.value.clips.find { it.id == firstClip.id }!!
+    assertTrue(editedClip.hasCrop)
+    assertEquals(0.1f, editedClip.cropLeft, 0.001f)
+    assertEquals(1280, editedClip.resizeWidth)
+    assertEquals(720, editedClip.resizeHeight)
+    assertEquals(750L, editedClip.fadeInMs)
+    assertEquals(1200L, editedClip.fadeOutMs)
+
+    // Split & Merge adjacent clips
+    vm.selectClip(firstClip.id)
+    vm.seekTo(firstClip.timelineStartMs + 3000L)
+    val countBeforeSplit = vm.uiState.value.clips.size
+    vm.splitSelectedClip()
+    assertEquals(countBeforeSplit + 1, vm.uiState.value.clips.size)
+
+    val leftPiece = vm.uiState.value.clips.find { it.timelineStartMs == firstClip.timelineStartMs }!!
+    vm.selectClip(leftPiece.id)
+    vm.mergeSelectedClipWithNext()
+    assertEquals(countBeforeSplit, vm.uiState.value.clips.size)
+
+    // Add Image Overlay & Delete
+    val initialImages = vm.uiState.value.imageOverlays.size
+    vm.addImageOverlayFromUri("file:///sdcard/logo.png", "Watermark.png", 3000L)
+    assertEquals(initialImages + 1, vm.uiState.value.imageOverlays.size)
+    val addedImgId = vm.uiState.value.imageOverlays.last().id
+    vm.deleteImageOverlay(addedImgId)
+    assertEquals(initialImages, vm.uiState.value.imageOverlays.size)
+  }
+
+  @Test
+  fun `timeline serializer preserves crop resize fades metadata and image overlays`() {
+    val clip = VideoClip(
+      id = "meta-clip",
+      name = "4K Clip.mp4",
+      uri = "file:///data/user/0/clip.mp4",
+      sourceDurationMs = 9000L,
+      cropLeft = 0.05f,
+      cropTop = 0.1f,
+      cropRight = 0.95f,
+      cropBottom = 0.9f,
+      resizeWidth = 1920,
+      resizeHeight = 1080,
+      fadeInMs = 400L,
+      fadeOutMs = 600L,
+      width = 3840,
+      height = 2160,
+      frameRate = 60f,
+      videoCodec = "H.264/AVC"
+    )
+    val overlay = com.example.data.model.ImageOverlay(
+      id = "img-1",
+      name = "Badge.png",
+      uri = "file:///data/user/0/badge.png",
+      timelineStartMs = 1000L,
+      durationMs = 3000L,
+      scale = 0.35f
+    )
+    val timeline = TimelineData(
+      clips = listOf(clip),
+      audioClips = emptyList(),
+      textOverlays = emptyList(),
+      stickers = emptyList(),
+      imageOverlays = listOf(overlay)
+    )
+    val restored = TimelineSerializer.deserialize(TimelineSerializer.serialize(timeline))
+    assertEquals(1, restored.clips.size)
+    assertEquals(0.05f, restored.clips[0].cropLeft, 0.001f)
+    assertEquals(1920, restored.clips[0].resizeWidth)
+    assertEquals(400L, restored.clips[0].fadeInMs)
+    assertEquals("H.264/AVC", restored.clips[0].videoCodec)
+    assertEquals(1, restored.imageOverlays.size)
+    assertEquals("Badge.png", restored.imageOverlays[0].name)
+  }
+
+  @Test
+  fun `playback verification dialog state and diagnostics log behave properly`(): Unit = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>() as android.app.Application
+    val vm = com.example.viewmodel.VideoEditorViewModel(context)
+    val media = ImportedMediaEntity(
+      id = "verify-id-1",
+      name = "PhoneClip.mp4",
+      uri = "file:///data/user/0/PhoneClip.mp4",
+      mediaType = "VIDEO",
+      durationMs = 4500L,
+      width = 1920,
+      height = 1080,
+      isPlaybackVerified = false
+    )
+
+    vm.requestPlaybackVerification(media)
+    assertEquals("verify-id-1", vm.uiState.value.pendingVerificationMedia?.id)
+    vm.dismissVerificationDialog()
+    assertNull(vm.uiState.value.pendingVerificationMedia)
+
+    com.example.util.MediaDiagnostics.clear()
+    com.example.util.MediaDiagnostics.info("TEST_CAT", "Diagnostic entry logged", "details")
+    val logs = com.example.util.MediaDiagnostics.logs.first()
+    assertTrue(logs.any { it.category == "TEST_CAT" && it.message == "Diagnostic entry logged" })
+  }
+
+  @Test
+  fun `room periodic auto-save persists clips, cuts, transitions, and restores project state`(): Unit = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>() as android.app.Application
+    val db = OpenCutDatabase.getDatabase(context)
+    val repo = com.example.data.repository.ProjectRepository(
+      projectDao = db.projectDao(),
+      importedMediaDao = db.importedMediaDao(),
+      projectLayerDao = db.projectLayerDao(),
+      projectEditHistoryDao = db.projectEditHistoryDao()
+    )
+    val proj = repo.createNewProject("AutoSave Room Project", withSampleContent = false)
+
+    val vm = com.example.viewmodel.VideoEditorViewModel(context)
+    vm.openProjectSync(proj.id)
+    assertTrue(vm.uiState.value.isAutoSaveEnabled)
+    vm.stopPeriodicAutoSaveLoop()
+
+    // Clean state should not trigger redundant Room write
+    val cleanSave = vm.performAutoSaveSync(force = false)
+    assertFalse("Unmodified project should not write redundantly", cleanSave)
+
+    // Add 2 clips, apply transition, filter, and text overlay
+    vm.addCustomMediaClip("sample://clip_one", "Clip One", 8000L)
+    vm.addCustomMediaClip("sample://clip_two", "Clip Two", 6000L)
+    val firstId = vm.uiState.value.clips[0].id
+    val secondId = vm.uiState.value.clips[1].id
+
+    vm.setTransition(secondId, TransitionType.WIPE_LEFT, 900L)
+    vm.setClipFilter(firstId, com.example.data.model.VideoFilter.CINEMATIC)
+    vm.addTextOverlay("AutoSave Title", com.example.data.model.TextStylePreset.NEON_GLOW)
+
+    // Allow any queued async autoSaveToRoom jobs from the actions above to settle first
+    kotlinx.coroutines.delay(150L)
+
+    // Live trim does not fire immediate autoSaveToRoom(); periodic sync must catch it
+    vm.updateTrimLive(firstId, 1000L, 6000L)
+    val countBefore = vm.uiState.value.autoSaveCount
+    val didSave = vm.performAutoSaveSync(force = false)
+    assertTrue("Dirty timeline should be auto-saved to Room", didSave)
+    val countAfterSync = vm.uiState.value.autoSaveCount
+    assertTrue(countAfterSync > countBefore)
+    assertNotNull(vm.uiState.value.lastAutoSavedAtMs)
+
+    // Verify background periodic ticker persists dirty live edits automatically
+    vm.startPeriodicAutoSaveLoop(intervalMs = 250L)
+    vm.updateTrimLive(firstId, 1500L, 5500L)
+    var ticksElapsed = 0
+    while (vm.uiState.value.autoSaveCount <= countAfterSync && ticksElapsed < 40) {
+      kotlinx.coroutines.delay(50L)
+      ticksElapsed++
+    }
+    vm.stopPeriodicAutoSaveLoop()
+    assertTrue(
+      "Periodic auto-save ticker should persist live trim edits",
+      vm.uiState.value.autoSaveCount > countAfterSync
+    )
+
+    // Reopen project in fresh ViewModel instance and confirm zero data loss
+    val freshVm = com.example.viewmodel.VideoEditorViewModel(context)
+    freshVm.openProjectSync(proj.id)
+    freshVm.stopPeriodicAutoSaveLoop()
+    val restored = freshVm.uiState.value
+
+    assertEquals(2, restored.clips.size)
+    assertEquals(1500L, restored.clips[0].trimInMs)
+    assertEquals(5500L, restored.clips[0].trimOutMs)
+    assertEquals(com.example.data.model.VideoFilter.CINEMATIC, restored.clips[0].filter)
+    assertEquals(TransitionType.WIPE_LEFT, restored.clips[1].transitionIn)
+    assertEquals(900L, restored.clips[1].transitionDurationMs)
+    assertEquals(1, restored.textOverlays.size)
+    assertEquals("AutoSave Title", restored.textOverlays[0].text)
+  }
+
+  @Test
+  fun `export preview segment computation and overlay filtering highlight filters and text overlays`() {
+    // 1. Short segment bounded within total duration
+    val segEndClamp = com.example.ui.components.computeExportPreviewSegment(
+      totalDurationMs = 14000L,
+      anchorPositionMs = 13500L,
+      segmentLengthMs = 5000L
+    )
+    assertEquals(9000L, segEndClamp.startMs)
+    assertEquals(14000L, segEndClamp.endMs)
+    assertEquals(5000L, segEndClamp.durationMs)
+
+    // 2. Short timeline shorter than 5s clamps to full timeline
+    val segShort = com.example.ui.components.computeExportPreviewSegment(
+      totalDurationMs = 3200L,
+      anchorPositionMs = 1000L,
+      segmentLengthMs = 5000L
+    )
+    assertEquals(0L, segShort.startMs)
+    assertEquals(3200L, segShort.endMs)
+
+    // 3. Highlight anchor finds text overlays and filters accurately
+    val clips = listOf(
+      VideoClip(
+        id = "c1",
+        name = "Scene 1",
+        uri = "sample://1",
+        sourceDurationMs = 6000L,
+        timelineStartMs = 0L,
+        filter = com.example.data.model.VideoFilter.CYBERPUNK
+      )
+    )
+    val texts = listOf(
+      com.example.data.model.TextOverlay(
+        id = "t1",
+        text = "Preview Banner",
+        timelineStartMs = 2000L,
+        durationMs = 2500L
+      )
+    )
+    val anchor = com.example.ui.components.findHighlightAnchorMs(clips, texts)
+    assertEquals(2500L, anchor)
+
+    val overlaysInside = com.example.ui.components.resolveActiveOverlaysAtTime(
+      textOverlays = texts,
+      stickers = emptyList(),
+      shapes = emptyList(),
+      imageOverlays = emptyList(),
+      positionMs = 3000L
+    )
+    assertEquals(1, overlaysInside.textOverlays.size)
+    assertEquals("Preview Banner", overlaysInside.textOverlays[0].text)
+
+    val overlaysOutside = com.example.ui.components.resolveActiveOverlaysAtTime(
+      textOverlays = texts,
+      stickers = emptyList(),
+      shapes = emptyList(),
+      imageOverlays = emptyList(),
+      positionMs = 500L
+    )
+    assertEquals(0, overlaysOutside.textOverlays.size)
+  }
+
+  @Test
+  fun `transitions manager and keyframe engine evaluate seams and animations`() {
+    val clip1 = VideoClip(id = "a", name = "Intro", uri = "sample://a", sourceDurationMs = 4000L, timelineStartMs = 0L)
+    val clip2 = VideoClip(id = "b", name = "Main", uri = "sample://b", sourceDurationMs = 4000L, timelineStartMs = 4000L)
+
+    val applied = com.example.engine.TransitionsManager.applyTransitionToSeam(
+      clips = listOf(clip1, clip2),
+      incomingClipId = "b",
+      transition = TransitionType.CROSSFADE,
+      durationMs = 1000L
+    )
+    val active = com.example.engine.TransitionsManager.evaluateTransitionAtTimelineMs(applied, 4500L)
+    assertNotNull(active)
+    assertEquals(TransitionType.CROSSFADE, active!!.transitionType)
+    assertEquals(0.5f, active.rawProgress, 0.01f)
+
+    val (withKf1, _) = com.example.engine.KeyframeEngine.upsertKeyframeAtOffset(
+      clip = clip1,
+      timeOffsetMs = 0L,
+      scale = 1.0f,
+      alpha = 0.0f,
+      positionX = 0f,
+      positionY = 0f,
+      curve = com.example.data.model.KeyframeCurve.LINEAR
+    )
+    val (withBoth, _) = com.example.engine.KeyframeEngine.upsertKeyframeAtOffset(
+      clip = withKf1,
+      timeOffsetMs = 2000L,
+      scale = 2.0f,
+      alpha = 1.0f,
+      positionX = 0.5f,
+      positionY = -0.5f,
+      curve = com.example.data.model.KeyframeCurve.LINEAR
+    )
+    val mid = com.example.engine.KeyframeEngine.evaluateClipAtElapsedMs(withBoth, 1000L)
+    assertEquals(1.5f, mid.scale, 0.02f)
+    assertEquals(0.5f, mid.alpha, 0.02f)
+    assertEquals(0.25f, mid.positionX, 0.02f)
+  }
+
+  @Test
+  fun `image overlay keyframe animation evaluates opacity, scale, rotation, and serializes cleanly`() {
+    val context = ApplicationProvider.getApplicationContext<Context>() as android.app.Application
+    val vm = com.example.viewmodel.VideoEditorViewModel(context)
+    vm.stopPeriodicAutoSaveLoop()
+
+    // Add an image overlay at timeline position 0ms
+    vm.seekTo(0L)
+    vm.addImageOverlayFromUri("file:///tmp/badge.png", "Badge Overlay", 4000L)
+    val overlay = vm.uiState.value.imageOverlays.last()
+    assertEquals(overlay.id, vm.uiState.value.selectedImageOverlayId)
+
+    // Toggle keyframe overlay and verify it stays open targeting the selected image clip
+    vm.toggleKeyframeOverlay(true)
+    assertTrue(vm.uiState.value.showKeyframeOverlay)
+
+    // Keyframe at 0ms: opacity=0.2, scale=0.8, rotation=-30
+    vm.seekTo(0L)
+    vm.updateKeyframeAtPlayhead(
+      clipId = overlay.id,
+      scale = 0.8f,
+      opacity = 0.2f,
+      rotation = -30f,
+      curve = com.example.data.model.KeyframeCurve.LINEAR
+    )
+
+    // Keyframe at 2000ms: opacity=1.0, scale=1.6, rotation=90
+    vm.seekTo(2000L)
+    vm.updateKeyframeAtPlayhead(
+      clipId = overlay.id,
+      scale = 1.6f,
+      opacity = 1.0f,
+      rotation = 90f,
+      curve = com.example.data.model.KeyframeCurve.LINEAR
+    )
+
+    val updatedOverlay = vm.uiState.value.imageOverlays.first { it.id == overlay.id }
+    assertTrue(updatedOverlay.hasKeyframe)
+    assertEquals(2, updatedOverlay.keyframes.size)
+
+    // Midpoint at 1000ms should interpolate opacity=0.6, scale=1.2, rotation=30
+    val mid = com.example.engine.KeyframeEngine.evaluateImageOverlayAtTimelineMs(updatedOverlay, 1000L)
+    assertEquals(1.2f, mid.scale, 0.02f)
+    assertEquals(0.6f, mid.alpha, 0.02f)
+    assertEquals(30f, mid.rotation, 0.5f)
+
+    // Verify TimelineSerializer preserves image overlay keyframes round-trip
+    val snapshot = com.example.data.db.TimelineData(
+      clips = emptyList(),
+      audioClips = emptyList(),
+      textOverlays = emptyList(),
+      stickers = emptyList(),
+      shapes = emptyList(),
+      imageOverlays = listOf(updatedOverlay)
+    )
+    val json = com.example.data.db.TimelineSerializer.serialize(snapshot)
+    val restored = com.example.data.db.TimelineSerializer.deserialize(json)
+    assertEquals(1, restored.imageOverlays.size)
+    assertTrue(restored.imageOverlays[0].hasKeyframe)
+    assertEquals(2, restored.imageOverlays[0].keyframes.size)
+    assertEquals(90f, restored.imageOverlays[0].keyframes[1].rotation, 0.01f)
+
+    // Clear keyframes cleanly
+    vm.clearAllKeyframes(overlay.id)
+    val cleared = vm.uiState.value.imageOverlays.first { it.id == overlay.id }
+    assertFalse(cleared.hasKeyframe)
+    assertEquals(0, cleared.keyframes.size)
+  }
+
+  @Test
+  fun `transitions library drop target resolution maps pointer coordinates to clip intersections`() {
+    val context = ApplicationProvider.getApplicationContext<Context>() as android.app.Application
+    val vm = com.example.viewmodel.VideoEditorViewModel(context)
+    vm.stopPeriodicAutoSaveLoop()
+
+    vm.addCustomMediaClip("sample://clip1", "Shot 1", 4000L)
+    vm.addCustomMediaClip("sample://clip2", "Shot 2", 4000L)
+    vm.addCustomMediaClip("sample://clip3", "Shot 3", 4000L)
+    val clips = vm.uiState.value.clips
+    assertTrue(clips.size >= 3)
+
+    val seamBounds = mapOf(
+      clips[1].id to androidx.compose.ui.geometry.Rect(left = 200f, top = 500f, right = 236f, bottom = 560f),
+      clips[2].id to androidx.compose.ui.geometry.Rect(left = 400f, top = 500f, right = 436f, bottom = 560f)
+    )
+
+    // Exact hit inside intersection 1 (between clip 0 and clip 1)
+    val hit1 = com.example.ui.components.resolveTransitionDropTarget(
+      pointerInRoot = androidx.compose.ui.geometry.Offset(218f, 530f),
+      seamBoundsInRoot = seamBounds
+    )
+    assertEquals(clips[1].id, hit1)
+
+    // Hit within hitPaddingPx near intersection 2 (between clip 1 and clip 2)
+    val hit2 = com.example.ui.components.resolveTransitionDropTarget(
+      pointerInRoot = androidx.compose.ui.geometry.Offset(455f, 530f),
+      seamBoundsInRoot = seamBounds,
+      hitPaddingPx = 44f
+    )
+    assertEquals(clips[2].id, hit2)
+
+    // Far away outside any clip intersection returns null
+    val miss = com.example.ui.components.resolveTransitionDropTarget(
+      pointerInRoot = androidx.compose.ui.geometry.Offset(900f, 100f),
+      seamBoundsInRoot = seamBounds
+    )
+    assertNull(miss)
+
+    // Simulated drag-and-drop workflow onto resolved seam target
+    vm.startDraggingTransition(TransitionType.SLIDE_LEFT, 850L)
+    assertEquals(TransitionType.SLIDE_LEFT, vm.uiState.value.draggingTransition)
+    vm.dropTransitionOnClip(hit1!!)
+
+    assertNull(vm.uiState.value.draggingTransition)
+    val updatedClip1 = vm.uiState.value.clips.first { it.id == clips[1].id }
+    assertEquals(TransitionType.SLIDE_LEFT, updatedClip1.transitionIn)
+    assertEquals(850L, updatedClip1.transitionDurationMs)
+  }
+
+  @Test
+  fun `custom social media export presets persist in room, apply settings, edit, and delete cleanly`(): Unit = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>() as android.app.Application
+    val db = OpenCutDatabase.getDatabase(context)
+    val repo = com.example.data.repository.ProjectRepository(
+      projectDao = db.projectDao(),
+      importedMediaDao = db.importedMediaDao(),
+      projectLayerDao = db.projectLayerDao(),
+      projectEditHistoryDao = db.projectEditHistoryDao(),
+      exportPresetDao = db.exportPresetDao()
+    )
+    repo.seedDefaultExportPresetsIfEmpty()
+    val seeded = repo.getExportPresetsSync()
+    assertTrue("Default social presets should be seeded", seeded.size >= 6)
+    assertTrue(seeded.any { it.platform == com.example.data.model.SocialPlatform.YOUTUBE && it.isBuiltIn })
+    assertTrue(seeded.any { it.platform == com.example.data.model.SocialPlatform.TIKTOK && it.isBuiltIn })
+    assertTrue(seeded.any { it.platform == com.example.data.model.SocialPlatform.INSTAGRAM_REELS && it.isBuiltIn })
+
+    val vm = com.example.viewmodel.VideoEditorViewModel(context)
+    vm.stopPeriodicAutoSaveLoop()
+
+    // Save a brand new custom TikTok 4K HEVC preset
+    val saved = vm.saveCustomExportPresetSync(
+      name = "My TikTok Ultra",
+      platform = com.example.data.model.SocialPlatform.TIKTOK,
+      aspectRatio = com.example.data.model.AspectRatio.VERTICAL_9_16,
+      resolution = com.example.data.model.ExportResolution.RES_4K,
+      fps = 60,
+      bitrate = com.example.data.model.ExportBitrate.ULTRA_20M,
+      codec = com.example.data.model.ExportVideoCodec.HEVC,
+      notes = "Vertical 4K creator master"
+    )
+    assertFalse(saved.isBuiltIn)
+    assertEquals(saved.id, vm.uiState.value.activeExportPresetId)
+    assertEquals(com.example.data.model.AspectRatio.VERTICAL_9_16, vm.uiState.value.aspectRatio)
+    assertEquals(com.example.data.model.ExportResolution.RES_4K, vm.uiState.value.exportResolution)
+    assertEquals(60, vm.uiState.value.exportFps)
+    assertEquals(com.example.data.model.ExportBitrate.ULTRA_20M, vm.uiState.value.exportBitrate)
+    assertEquals(com.example.data.model.ExportVideoCodec.HEVC, vm.uiState.value.exportCodec)
+
+    // Verify persisted in Room
+    val stored = db.exportPresetDao().getPresetById(saved.id)
+    assertNotNull(stored)
+    assertEquals("My TikTok Ultra", stored!!.name)
+    assertEquals("Vertical 4K creator master", stored.notes)
+
+    // Edit the existing custom preset in-place
+    val edited = vm.saveCustomExportPresetSync(
+      name = "My Reels 1080p",
+      platform = com.example.data.model.SocialPlatform.INSTAGRAM_REELS,
+      aspectRatio = com.example.data.model.AspectRatio.VERTICAL_9_16,
+      resolution = com.example.data.model.ExportResolution.RES_1080P,
+      fps = 30,
+      bitrate = com.example.data.model.ExportBitrate.HIGH_10M,
+      codec = com.example.data.model.ExportVideoCodec.H264,
+      notes = "Edited notes",
+      existingId = saved.id
+    )
+    assertEquals(saved.id, edited.id)
+    assertEquals("My Reels 1080p", db.exportPresetDao().getPresetById(saved.id)?.name)
+    assertEquals(com.example.data.model.ExportResolution.RES_1080P, vm.uiState.value.exportResolution)
+    assertEquals(com.example.data.model.ExportVideoCodec.H264, vm.uiState.value.exportCodec)
+
+    // Apply a built-in YouTube preset and confirm all settings update
+    val ytPreset = seeded.first { it.platform == com.example.data.model.SocialPlatform.YOUTUBE }
+    vm.applyExportPreset(ytPreset)
+    assertEquals(ytPreset.id, vm.uiState.value.activeExportPresetId)
+    assertEquals(com.example.data.model.AspectRatio.LANDSCAPE_16_9, vm.uiState.value.aspectRatio)
+    assertEquals(60, vm.uiState.value.exportFps)
+
+    // Delete custom preset and confirm removal from Room
+    vm.deleteCustomExportPresetSync(saved.id)
+    assertNull(db.exportPresetDao().getPresetById(saved.id))
+  }
+
+  @Test
+  fun `studio export utilities generate valid srt, vtt, fcpxml, boomerang loop, and clear cache buffers`(): Unit = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>() as android.app.Application
+    val overlays = listOf(
+      com.example.data.model.TextOverlay(
+        id = "cap-1",
+        text = "Opening Hook",
+        timelineStartMs = 1500L,
+        durationMs = 3000L
+      ),
+      com.example.data.model.TextOverlay(
+        id = "cap-2",
+        text = "Subscribe Now",
+        timelineStartMs = 5000L,
+        durationMs = 2000L
+      )
+    )
+
+    val srt = com.example.util.StudioExportUtilities.generateSrtContent(overlays, "Demo")
+    assertTrue(srt.contains("00:00:01,500 --> 00:00:04,500"))
+    assertTrue(srt.contains("Opening Hook"))
+    assertTrue(srt.contains("00:00:05,000 --> 00:00:07,000"))
+
+    val vtt = com.example.util.StudioExportUtilities.generateVttContent(overlays, "Demo")
+    assertTrue(vtt.startsWith("WEBVTT"))
+    assertTrue(vtt.contains("00:00:01.500 --> 00:00:04.500"))
+
+    val clip1 = VideoClip(id = "c1", name = "Intro.mp4", uri = "file:///intro.mp4", sourceDurationMs = 4000L, timelineStartMs = 0L)
+    val clip2 = VideoClip(
+      id = "c2",
+      name = "Outro.mp4",
+      uri = "file:///outro.mp4",
+      sourceDurationMs = 5000L,
+      timelineStartMs = 4000L,
+      transitionIn = TransitionType.CROSSFADE,
+      transitionDurationMs = 600L
+    )
+    val fcpxml = com.example.util.StudioExportUtilities.generateFcpxmlContent(
+      project = null,
+      clips = listOf(clip1, clip2),
+      audioClips = emptyList(),
+      textOverlays = overlays,
+      aspectRatio = com.example.data.model.AspectRatio.VERTICAL_9_16,
+      fps = 60
+    )
+    assertTrue(fcpxml.contains("<fcpxml version=\"1.10\">"))
+    assertTrue(fcpxml.contains("width=\"1080\" height=\"1920\""))
+    assertTrue(fcpxml.contains("<transition name=\""))
+    assertTrue(fcpxml.contains("<title lane=\"1\""))
+
+    // Verify real text file write to filesDir/studio_exports
+    val written = com.example.util.StudioExportUtilities.writeStudioTextExport(context, "test_subtitles.srt", srt)
+    assertTrue(written.isSuccess)
+    assertTrue(written.getOrThrow().exists())
+    assertTrue(written.getOrThrow().length() > 20L)
+
+    // Verify real temp cache cleanup
+    val tempFile = java.io.File(context.cacheDir, "temp_buffer_test.bin")
+    tempFile.writeBytes(ByteArray(4096) { 1 })
+    assertTrue(tempFile.exists())
+    val freedBytes = com.example.util.StudioExportUtilities.clearTempBuffers(context)
+    assertTrue("clearTempBuffers should report freed bytes", freedBytes >= 4096L)
+    assertFalse("Temp cache file should be deleted", tempFile.exists())
+
+    // Verify Boomerang loop creates forward + reversed 1.5x clip pair on timeline
+    val vm = com.example.viewmodel.VideoEditorViewModel(context)
+    vm.stopPeriodicAutoSaveLoop()
+    vm.addCustomMediaClip("sample://action", "Action Clip", 4000L)
+    val countBefore = vm.uiState.value.clips.size
+    vm.createBoomerangLoopOnTimeline()
+    assertEquals(countBefore + 1, vm.uiState.value.clips.size)
+    val loopPair = vm.uiState.value.clips.takeLast(2)
+    assertEquals(1.5f, loopPair[0].speed, 0.01f)
+    assertEquals(1.5f, loopPair[1].speed, 0.01f)
+    assertTrue(loopPair[1].isReversed)
+    assertEquals(TransitionType.CROSSFADE, loopPair[1].transitionIn)
+  }
+
+  @Test
+  fun `composition guides cycle cleanly, frame grab captures valid png and inserts overlay, and weekly analytics compute real buckets`(): Unit = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>() as android.app.Application
+    val vm = com.example.viewmodel.VideoEditorViewModel(context)
+    vm.stopPeriodicAutoSaveLoop()
+
+    // 1. Composition Safe-Zone Guides cycle through all 4 modes cleanly
+    assertEquals(com.example.data.model.CompositionGuideMode.OFF, vm.uiState.value.compositionGuideMode)
+    vm.cycleCompositionGuideMode()
+    assertEquals(com.example.data.model.CompositionGuideMode.RULE_OF_THIRDS, vm.uiState.value.compositionGuideMode)
+    vm.cycleCompositionGuideMode()
+    assertEquals(com.example.data.model.CompositionGuideMode.SOCIAL_SAFE_ZONE, vm.uiState.value.compositionGuideMode)
+    vm.cycleCompositionGuideMode()
+    assertEquals(com.example.data.model.CompositionGuideMode.TITLE_SAFE, vm.uiState.value.compositionGuideMode)
+    vm.cycleCompositionGuideMode()
+    assertEquals(com.example.data.model.CompositionGuideMode.OFF, vm.uiState.value.compositionGuideMode)
+
+    // 2. HD Frame Grab captures a real PNG file and can insert it as a Timeline Image Overlay
+    vm.addCustomMediaClip("sample://cinematic_shot", "Cinematic Shot", 5000L)
+    val clip = vm.uiState.value.clips.last()
+    val capturedRes = com.example.util.StudioExportUtilities.captureClipFrameToPng(
+      context = context,
+      clip = clip,
+      timelinePositionMs = 1500L,
+      aspectRatio = com.example.data.model.AspectRatio.VERTICAL_9_16
+    )
+    assertTrue("Frame capture should succeed", capturedRes.isSuccess)
+    val pngFile = capturedRes.getOrThrow()
+    assertTrue("Captured PNG file should exist", pngFile.exists())
+    assertTrue("Captured PNG file should be non-empty", pngFile.length() > 100L)
+    assertTrue(pngFile.name.endsWith(".png"))
+
+    val overlaysBefore = vm.uiState.value.imageOverlays.size
+    vm.insertCapturedFrameAsImageOverlay(pngFile)
+    assertEquals(overlaysBefore + 1, vm.uiState.value.imageOverlays.size)
+    assertNull(vm.uiState.value.capturedFrameFilePath)
+
+    // 3. Weekly analytics buckets reflect actual timestamps rather than hardcoded values
+    val now = System.currentTimeMillis()
+    val oneDayMs = 24L * 60L * 60L * 1000L
+    val (labels, values) = com.example.util.StudioExportUtilities.computeWeeklyActivityBuckets(
+      projectUpdatedTimestamps = listOf(now, now - 2L * oneDayMs),
+      renderedCreatedTimestamps = listOf(now),
+      nowMs = now
+    )
+    assertEquals(7, labels.size)
+    assertEquals(7, values.size)
+    assertEquals("Today", labels.last())
+    assertEquals(1.0f, values.last(), 0.01f)
+    assertTrue("Day with activity should exceed empty day baseline", values[4] > values[0])
+  }
+
+  @Test
+  fun `ExportPresetManager seeds YouTube 4K and Instagram Reel and persists custom profiles in Room`(): Unit = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val db = Room.inMemoryDatabaseBuilder(context, OpenCutDatabase::class.java)
+      .allowMainThreadQueries()
+      .build()
+    try {
+      val manager = com.example.data.manager.ExportPresetManager(db)
+
+      // 1. Seed defaults and verify YouTube 4K and Instagram Reel profiles
+      val seeded = manager.seedDefaultProfilesIfNeeded()
+      assertTrue("Should seed curated platform defaults", seeded.size >= 7)
+
+      val yt4k = manager.getPresetByName("YouTube 4K")
+      assertNotNull("YouTube 4K default profile should be seeded", yt4k)
+      assertEquals(com.example.data.model.ExportResolution.RES_4K, yt4k!!.resolution)
+      assertEquals(60, yt4k.fps)
+      assertEquals(com.example.data.model.ExportBitrate.ULTRA_20M, yt4k.bitrate)
+      assertEquals(com.example.data.model.ExportVideoCodec.HEVC, yt4k.videoCodec)
+      assertTrue(yt4k.isBuiltIn)
+
+      val igReel = manager.getPresetByName("Instagram Reel")
+      assertNotNull("Instagram Reel default profile should be seeded", igReel)
+      assertEquals(com.example.data.model.AspectRatio.VERTICAL_9_16, igReel!!.aspectRatio)
+      assertEquals(com.example.data.model.ExportResolution.RES_1080P, igReel.resolution)
+      assertEquals(30, igReel.fps)
+      assertEquals(com.example.data.model.ExportBitrate.HIGH_10M, igReel.bitrate)
+      assertTrue(igReel.isBuiltIn)
+
+      // 2. Save a custom profile and retrieve by ID, name, platform, and custom Flow
+      val saved = manager.saveCustomProfile(
+        name = "Client 4K Master",
+        platform = com.example.data.model.SocialPlatform.YOUTUBE,
+        aspectRatio = com.example.data.model.AspectRatio.LANDSCAPE_16_9,
+        resolution = com.example.data.model.ExportResolution.RES_4K,
+        fps = 60,
+        bitrate = com.example.data.model.ExportBitrate.ULTRA_20M,
+        codec = com.example.data.model.ExportVideoCodec.HEVC,
+        notes = "High bitrate YouTube master"
+      )
+      assertFalse(saved.isBuiltIn)
+
+      val fetchedById = manager.getPresetById(saved.id)
+      assertNotNull(fetchedById)
+      assertEquals("Client 4K Master", fetchedById!!.name)
+      assertEquals(com.example.data.model.ExportResolution.RES_4K, fetchedById.resolution)
+      assertEquals(com.example.data.model.ExportBitrate.ULTRA_20M, fetchedById.bitrate)
+      assertEquals(60, fetchedById.fps)
+
+      val customOnly = manager.observeCustomPresets().first()
+      assertEquals(1, customOnly.size)
+      assertEquals(saved.id, customOnly.first().id)
+
+      val youtubePresets = manager.observePresetsForPlatform(com.example.data.model.SocialPlatform.YOUTUBE).first()
+      assertTrue(youtubePresets.any { it.name == "YouTube 4K" })
+      assertTrue(youtubePresets.any { it.name == "Client 4K Master" })
+
+      // 3. Re-seeding defaults preserves custom profiles without overwriting
+      val afterReseed = manager.seedDefaultProfilesIfNeeded()
+      assertTrue(afterReseed.any { it.id == saved.id })
+
+      // 4. Built-in defaults are protected from accidental deletion, while custom profiles delete cleanly
+      assertFalse("Built-in profile should be protected by default", manager.deleteProfile(yt4k.id, allowBuiltIn = false))
+      assertNotNull(manager.getPresetById(yt4k.id))
+
+      assertTrue("Custom profile should delete cleanly", manager.deleteProfile(saved.id, allowBuiltIn = false))
+      assertNull(manager.getPresetById(saved.id))
+    } finally {
+      db.close()
+    }
+  }
 }
+
+
 
 
 

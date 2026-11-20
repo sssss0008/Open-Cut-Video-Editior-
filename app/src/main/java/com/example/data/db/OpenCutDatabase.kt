@@ -10,9 +10,10 @@ import androidx.room.RoomDatabase
         ProjectEntity::class,
         ImportedMediaEntity::class,
         ProjectLayerEntity::class,
-        ProjectEditHistoryEntity::class
+        ProjectEditHistoryEntity::class,
+        ExportPresetEntity::class
     ],
-    version = 3,
+    version = 5,
     exportSchema = false
 )
 abstract class OpenCutDatabase : RoomDatabase() {
@@ -20,6 +21,7 @@ abstract class OpenCutDatabase : RoomDatabase() {
     abstract fun importedMediaDao(): ImportedMediaDao
     abstract fun projectLayerDao(): ProjectLayerDao
     abstract fun projectEditHistoryDao(): ProjectEditHistoryDao
+    abstract fun exportPresetDao(): ExportPresetDao
 
     companion object {
         @Volatile
@@ -31,7 +33,7 @@ abstract class OpenCutDatabase : RoomDatabase() {
                     context.applicationContext,
                     OpenCutDatabase::class.java,
                     "opencut_database"
-                ).fallbackToDestructiveMigration().build()
+                ).fallbackToDestructiveMigration(true).build()
                 INSTANCE = instance
                 instance
             }

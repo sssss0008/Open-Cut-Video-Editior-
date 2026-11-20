@@ -19,5 +19,6 @@ data class ProjectEntity(
     val timelineDataJson: String,
     val createdAt: Long = updatedAt,
     val lastPlayheadPositionMs: Long = 0L,
-    val currentWorkspace: String = "EDIT"
+    val currentWorkspace: String = "EDIT",
+    val bitrateMbps: Int = 10
 )

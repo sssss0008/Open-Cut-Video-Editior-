@@ -1,18 +1,8 @@
 package com.example.ui.components
 
 import android.content.Intent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.Canvas
+import android.widget.Toast
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,10 +15,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
@@ -45,13 +42,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -65,16 +59,22 @@ import com.example.ui.theme.AccentCyan
 import com.example.ui.theme.AccentEmerald
 import com.example.ui.theme.AccentPink
 import com.example.ui.theme.StudioCardDark
+import com.example.util.Media3VideoExporter
+import java.io.File
+import java.util.Locale
 
 @Composable
 fun ExportProgressComponent(
     exportData: ExportProgressData,
     onCancelExport: () -> Unit,
     onDismissCompleted: () -> Unit,
+    onSaveAsClick: (() -> Unit)? = null,
+    onPlayExportedClick: (() -> Unit)? = null,
+    onShareExportedClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    var showSavedToast by remember { mutableStateOf(false) }
+    val isFailed = exportData.stage == ExportStage.FAILED
 
     // Pulsing shimmer animation for rendering activity
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
@@ -88,10 +88,16 @@ fun ExportProgressComponent(
         label = "pulseAlpha"
     )
 
+    val borderColor = when {
+        isFailed -> Color(0xFFEF4444)
+        exportData.completed -> AccentEmerald
+        else -> AccentCyan
+    }
+
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = StudioCardDark),
-        border = androidx.compose.foundation.BorderStroke(1.5.dp, if (exportData.completed) AccentEmerald else AccentCyan),
+        border = androidx.compose.foundation.BorderStroke(1.5.dp, borderColor),
         modifier = modifier
             .fillMaxWidth()
             .testTag("export_progress_component")
@@ -110,14 +116,18 @@ fun ExportProgressComponent(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Surface(
                         shape = CircleShape,
-                        color = if (exportData.completed) AccentEmerald.copy(alpha = 0.2f) else AccentCyan.copy(alpha = 0.2f),
+                        color = borderColor.copy(alpha = 0.2f),
                         modifier = Modifier.size(40.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
-                                imageVector = if (exportData.completed) Icons.Default.CheckCircle else Icons.Default.Movie,
+                                imageVector = when {
+                                    isFailed -> Icons.Default.ErrorOutline
+                                    exportData.completed -> Icons.Default.CheckCircle
+                                    else -> Icons.Default.Movie
+                                },
                                 contentDescription = "Export Status",
-                                tint = if (exportData.completed) AccentEmerald else AccentCyan,
+                                tint = borderColor,
                                 modifier = Modifier.size(22.dp)
                             )
                         }
@@ -125,20 +135,24 @@ fun ExportProgressComponent(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
-                            text = if (exportData.completed) "Render Completed!" else "Exporting Video",
+                            text = when {
+                                isFailed -> "Export Failed"
+                                exportData.completed -> "MP4 Render Completed!"
+                                else -> "Exporting Video"
+                            },
                             color = Color.White,
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "${exportData.resolution.label} • ${exportData.fps} FPS • MP4",
+                            text = "${exportData.resolution.label} • ${exportData.fps} FPS • ${exportData.bitrateMbps} Mbps MP4",
                             color = Color.LightGray,
                             fontSize = 11.sp
                         )
                     }
                 }
 
-                if (exportData.isExporting && !exportData.completed) {
+                if (exportData.isExporting && !exportData.completed && !isFailed) {
                     OutlinedButton(
                         onClick = onCancelExport,
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF5252)),
@@ -339,27 +353,68 @@ fun ExportProgressComponent(
                 modifier = Modifier.padding(top = 6.dp)
             )
 
-            // Completed State Actions: Play, Save to Gallery, Share
-            if (exportData.completed) {
-                Spacer(modifier = Modifier.height(16.dp))
+            // Error Banner if Failed
+            if (isFailed) {
+                Spacer(modifier = Modifier.height(14.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF450A0A),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = exportData.errorMessage ?: "Export failed during hardware encoding.",
+                        color = Color(0xFFFCA5A5),
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedButton(
+                    onClick = onCancelExport,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                        .testTag("export_error_reset_button")
+                ) {
+                    Text("Reset & Try Another Resolution", color = Color.White, fontSize = 12.sp)
+                }
+            }
 
-                AnimatedVisibility(visible = showSavedToast, enter = fadeIn(), exit = fadeOut()) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = AccentEmerald.copy(alpha = 0.2f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, AccentEmerald.copy(alpha = 0.5f)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 12.dp)
-                    ) {
-                        Text(
-                            text = "✓ Saved directly to phone internal storage: /Movies/OpenCut/${exportData.outputFileName}",
-                            color = AccentEmerald,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(10.dp)
-                        )
+            // Completed State Actions: Real File Verification, Play, Save As, Share MP4
+            if (exportData.completed) {
+                Spacer(modifier = Modifier.height(14.dp))
+
+                val outputFile = remember(exportData.outputFilePath) {
+                    if (exportData.outputFilePath.isNotBlank()) File(exportData.outputFilePath) else null
+                }
+                val actualSizeText = remember(exportData.outputFilePath) {
+                    val bytes = outputFile?.takeIf { it.exists() }?.length() ?: 0L
+                    if (bytes >= 1024L * 1024L) {
+                        String.format(Locale.US, "%.2f MB", bytes / (1024f * 1024f))
+                    } else if (bytes > 0L) {
+                        "${(bytes / 1024L).coerceAtLeast(1L)} KB"
+                    } else {
+                        "Saved"
                     }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = AccentEmerald.copy(alpha = 0.16f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, AccentEmerald.copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp)
+                ) {
+                    Text(
+                        text = "✓ Rendered MP4 (${actualSizeText}): ${exportData.outputFileName}\nPublished to Movies/OpenCut on device storage",
+                        color = AccentEmerald,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(10.dp)
+                    )
                 }
 
                 Row(
@@ -367,38 +422,86 @@ fun ExportProgressComponent(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Button(
-                        onClick = { showSavedToast = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentEmerald),
+                        onClick = {
+                            if (onPlayExportedClick != null) {
+                                onPlayExportedClick()
+                            } else {
+                                val uri = Media3VideoExporter.getShareableFileUri(context, exportData.outputFilePath)
+                                if (uri != null) {
+                                    val playIntent = Intent(Intent.ACTION_VIEW).apply {
+                                        setDataAndType(uri, "video/mp4")
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    runCatching {
+                                        context.startActivity(Intent.createChooser(playIntent, "Play Exported MP4"))
+                                    }.onFailure {
+                                        Toast.makeText(context, "No video player app installed.", Toast.LENGTH_SHORT).show()
+                                    }
+                                } else {
+                                    Toast.makeText(context, "Exported MP4 file not found.", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A8A)),
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(44.dp)
-                            .testTag("export_save_phone_button")
+                            .height(48.dp)
+                            .testTag("export_play_button")
                     ) {
-                        Icon(Icons.Default.Download, "Save", tint = Color.Black, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Save to Phone", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Icon(Icons.Default.PlayArrow, "Play", tint = Color.White, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Play", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
 
                     Button(
                         onClick = {
-                            val sendIntent = Intent().apply {
-                                action = Intent.ACTION_SEND
-                                putExtra(Intent.EXTRA_TEXT, "Exported with OpenCut Studio (100% on-device offline video editor): ${exportData.outputFileName}")
-                                type = "text/plain"
+                            if (onSaveAsClick != null) {
+                                onSaveAsClick()
+                            } else {
+                                Toast.makeText(context, "Saved to Movies/OpenCut/${exportData.outputFileName}", Toast.LENGTH_SHORT).show()
                             }
-                            context.startActivity(Intent.createChooser(sendIntent, "Share Exported Video"))
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentEmerald),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .weight(1.2f)
+                            .height(48.dp)
+                            .testTag("export_save_phone_button")
+                    ) {
+                        Icon(Icons.Default.Download, "Save As", tint = Color.Black, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Save As", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Button(
+                        onClick = {
+                            if (onShareExportedClick != null) {
+                                onShareExportedClick()
+                            } else {
+                                val uri = Media3VideoExporter.getShareableFileUri(context, exportData.outputFilePath)
+                                if (uri != null) {
+                                    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "video/mp4"
+                                        putExtra(Intent.EXTRA_STREAM, uri)
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    context.startActivity(Intent.createChooser(sendIntent, "Share MP4 Video"))
+                                } else {
+                                    Toast.makeText(context, "Exported MP4 file not found to share.", Toast.LENGTH_SHORT).show()
+                                }
+                            }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(44.dp)
+                            .height(48.dp)
                             .testTag("export_share_button")
                     ) {
                         Icon(Icons.Default.Share, "Share", tint = Color.Black, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Share Video", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Share", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
@@ -409,7 +512,7 @@ fun ExportProgressComponent(
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(40.dp)
+                        .height(44.dp)
                         .testTag("dismiss_export_complete_button")
                 ) {
                     Text("Done / Back to Timeline", color = Color.White, fontSize = 12.sp)

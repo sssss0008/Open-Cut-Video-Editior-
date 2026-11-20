@@ -28,7 +28,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.AspectRatio
+import com.example.data.model.AudioTrackItem
 import com.example.data.model.CanvasBgMode
+import com.example.data.model.ImageOverlay
 import com.example.data.model.OverlaySticker
 import com.example.data.model.ShapeOverlay
 import com.example.data.model.TextOverlay
@@ -87,7 +89,19 @@ fun CanvasBackgroundProcessor(
     activeTextOverlays: List<TextOverlay>,
     activeStickers: List<OverlaySticker>,
     activeShapes: List<ShapeOverlay> = emptyList(),
+    activeImageOverlays: List<ImageOverlay> = emptyList(),
     isStabilizationSplitPreview: Boolean = false,
+    isPlaying: Boolean = false,
+    playbackSpeed: Float = 1.0f,
+    isVideoTrackMuted: Boolean = false,
+    audioTracks: List<AudioTrackItem> = emptyList(),
+    isAudioTrackMuted: Boolean = false,
+    isVoiceoverActive: Boolean = false,
+    autoDuckingLevel: Float = 0.25f,
+    masterVolume: Float = 1.0f,
+    isAutoDuckingEnabled: Boolean = true,
+    onBufferingChanged: (Boolean) -> Unit = {},
+    onPlaybackError: (String?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val isVerticalOnWideCanvas = isVerticalOnHorizontal(clip, canvasAspectRatio)
@@ -162,7 +176,19 @@ fun CanvasBackgroundProcessor(
                     activeTextOverlays = activeTextOverlays,
                     activeStickers = activeStickers,
                     activeShapes = activeShapes,
-                    isStabilizationSplitPreview = isStabilizationSplitPreview
+                    activeImageOverlays = activeImageOverlays,
+                    isStabilizationSplitPreview = isStabilizationSplitPreview,
+                    isPlaying = isPlaying,
+                    playbackSpeed = playbackSpeed,
+                    isVideoTrackMuted = isVideoTrackMuted,
+                    audioTracks = audioTracks,
+                    isAudioTrackMuted = isAudioTrackMuted,
+                    isVoiceoverActive = isVoiceoverActive,
+                    autoDuckingLevel = autoDuckingLevel,
+                    masterVolume = masterVolume,
+                    isAutoDuckingEnabled = isAutoDuckingEnabled,
+                    onBufferingChanged = onBufferingChanged,
+                    onPlaybackError = onPlaybackError
                 )
             }
 
@@ -195,7 +221,19 @@ fun CanvasBackgroundProcessor(
                 activeTextOverlays = activeTextOverlays,
                 activeStickers = activeStickers,
                 activeShapes = activeShapes,
-                isStabilizationSplitPreview = isStabilizationSplitPreview
+                activeImageOverlays = activeImageOverlays,
+                isStabilizationSplitPreview = isStabilizationSplitPreview,
+                isPlaying = isPlaying,
+                playbackSpeed = playbackSpeed,
+                isVideoTrackMuted = isVideoTrackMuted,
+                audioTracks = audioTracks,
+                isAudioTrackMuted = isAudioTrackMuted,
+                isVoiceoverActive = isVoiceoverActive,
+                autoDuckingLevel = autoDuckingLevel,
+                masterVolume = masterVolume,
+                isAutoDuckingEnabled = isAutoDuckingEnabled,
+                onBufferingChanged = onBufferingChanged,
+                onPlaybackError = onPlaybackError
             )
         }
     }

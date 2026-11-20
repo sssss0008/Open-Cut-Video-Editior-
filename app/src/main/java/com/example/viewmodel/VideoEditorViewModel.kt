@@ -3,11 +3,13 @@ package com.example.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.db.ExportPresetEntity
 import com.example.data.db.ImportedMediaEntity
 import com.example.data.db.OpenCutDatabase
 import com.example.data.db.ProjectEntity
 import com.example.data.db.TimelineData
 import com.example.data.db.TimelineSerializer
+import com.example.data.manager.ExportPresetManager
 import com.example.data.model.AspectRatio
 import com.example.data.model.AudioCategory
 import com.example.data.model.AudioFadeType
@@ -16,6 +18,7 @@ import com.example.data.model.CanvasBgMode
 import com.example.data.model.ExportProgressData
 import com.example.data.model.ExportResolution
 import com.example.data.model.ExportStage
+import com.example.data.model.ExportVideoCodec
 import com.example.data.model.KeyframeCurve
 import com.example.data.model.OpenShotKeyframe
 import com.example.data.model.OverlaySticker
@@ -24,6 +27,7 @@ import com.example.data.model.SampleAudio
 import com.example.data.model.SampleMediaRepository
 import com.example.data.model.SampleVideo
 import com.example.data.model.ShapeOverlay
+import com.example.data.model.SocialPlatform
 import com.example.data.model.StabilizationMode
 import com.example.data.model.StabilizationSettings
 import com.example.data.model.TextOverlay
@@ -49,6 +53,23 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.UUID
 
+import android.net.Uri
+import com.example.data.model.ExportBitrate
+import com.example.data.model.ImageOverlay
+import com.example.data.model.ImportProgressState
+import com.example.engine.KeyframeEngine
+import com.example.engine.TransitionSeam
+import com.example.engine.TransitionsManager
+import com.example.util.Media3VideoExporter
+import com.example.util.MediaDiagnostics
+import com.example.util.StudioExportUtilities
+import java.io.File
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+
 data class EditorUiState(
     val currentProject: ProjectEntity? = null,
     val clips: List<VideoClip> = emptyList(),
@@ -56,6 +77,7 @@ data class EditorUiState(
     val textOverlays: List<TextOverlay> = emptyList(),
     val stickers: List<OverlaySticker> = emptyList(),
     val shapes: List<ShapeOverlay> = emptyList(),
+    val imageOverlays: List<ImageOverlay> = emptyList(),
     val aspectRatio: AspectRatio = AspectRatio.VERTICAL_9_16,
     val currentPositionMs: Long = 0L,
     val isPlaying: Boolean = false,
@@ -64,8 +86,10 @@ data class EditorUiState(
     val selectedTextId: String? = null,
     val selectedStickerId: String? = null,
     val selectedShapeId: String? = null,
+    val selectedImageOverlayId: String? = null,
     val activeTrack: TrackType = TrackType.VIDEO,
     val timelineZoom: Float = 1.0f, // 1.0f = standard, 2.0f = zoomed in, 0.5f = zoomed out
+    val masterVolume: Float = 1.0f,
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
     val showTrimSheet: Boolean = false,
@@ -87,15 +111,28 @@ data class EditorUiState(
     val showEffectsSheet: Boolean = false,
     val showRazorSheet: Boolean = false,
     val showTitleTemplatesSheet: Boolean = false,
+    val showCropResizeSheet: Boolean = false,
+    val showClipFadesSheet: Boolean = false,
+    val showDiagnosticsDialog: Boolean = false,
+    val showFullscreenPreview: Boolean = false,
     val showPrecisionScrubber: Boolean = false,
     val isSnappingEnabled: Boolean = true,
     val showExportDialog: Boolean = false,
     val isExporting: Boolean = false,
     val exportProgress: Float = 0f,
     val exportCompleted: Boolean = false,
+    val exportResolution: ExportResolution = ExportResolution.RES_1080P,
+    val exportFps: Int = 30,
+    val exportBitrate: ExportBitrate = ExportBitrate.HIGH_10M,
+    val exportCodec: ExportVideoCodec = ExportVideoCodec.H264,
+    val activeExportPresetId: String? = null,
+    val storageUsageBytes: Long = 0L,
+    val isExtractingAudio: Boolean = false,
     val exportData: ExportProgressData = ExportProgressData(),
     val renderedVideos: List<RenderedVideoItem> = emptyList(),
     val statusMessage: String? = null,
+    val importProgress: ImportProgressState = ImportProgressState(),
+    val pendingVerificationMedia: ImportedMediaEntity? = null,
     val draggingTransition: TransitionType? = null,
     val transitionDragDurationMs: Long = 600L,
     // Track headers state: visibility & locks
@@ -133,7 +170,16 @@ data class EditorUiState(
     val editHistory: List<com.example.data.db.ProjectEditHistoryEntity> = emptyList(),
     val showHistorySheet: Boolean = false,
     // Smart Performance & Proxy Editing Mode
-    val proxyQualityMode: com.example.data.model.ProxyQualityMode = com.example.data.model.ProxyQualityMode.FULL
+    val proxyQualityMode: com.example.data.model.ProxyQualityMode = com.example.data.model.ProxyQualityMode.FULL,
+    // Periodic Room Auto-Save state
+    val isAutoSaveEnabled: Boolean = true,
+    val isAutoSaving: Boolean = false,
+    val lastAutoSavedAtMs: Long? = null,
+    val autoSaveCount: Int = 0,
+    // Non-destructive Preview Composition Guides & HD Frame Grab
+    val compositionGuideMode: com.example.data.model.CompositionGuideMode = com.example.data.model.CompositionGuideMode.OFF,
+    val isCapturingFrame: Boolean = false,
+    val capturedFrameFilePath: String? = null
 ) {
     val totalDurationMs: Long
         get() {
@@ -142,7 +188,8 @@ data class EditorUiState(
             val textEnd = textOverlays.maxOfOrNull { it.timelineEndMs } ?: 0L
             val stickerEnd = stickers.maxOfOrNull { it.timelineEndMs } ?: 0L
             val shapeEnd = shapes.maxOfOrNull { it.timelineEndMs } ?: 0L
-            return maxOf(videoEnd, audioEnd, textEnd, stickerEnd, shapeEnd).coerceAtLeast(1000L)
+            val imageEnd = imageOverlays.maxOfOrNull { it.timelineEndMs } ?: 0L
+            return maxOf(videoEnd, audioEnd, textEnd, stickerEnd, shapeEnd, imageEnd).coerceAtLeast(1000L)
         }
 
     val selectedClip: VideoClip?
@@ -157,6 +204,9 @@ data class EditorUiState(
     val selectedShape: ShapeOverlay?
         get() = shapes.find { it.id == selectedShapeId }
 
+    val selectedImageOverlay: ImageOverlay?
+        get() = imageOverlays.find { it.id == selectedImageOverlayId }
+
     val activeClipAtPlayhead: VideoClip?
         get() = clips.find { currentPositionMs >= it.timelineStartMs && currentPositionMs < it.timelineEndMs }
             ?: clips.lastOrNull { currentPositionMs >= it.timelineStartMs }
@@ -169,6 +219,12 @@ data class EditorUiState(
 
     val activeShapes: List<ShapeOverlay>
         get() = shapes.filter { currentPositionMs >= it.timelineStartMs && currentPositionMs < it.timelineEndMs }
+
+    val activeImageOverlays: List<ImageOverlay>
+        get() = imageOverlays.filter { currentPositionMs >= it.timelineStartMs && currentPositionMs < it.timelineEndMs }
+
+    val is4kSupported: Boolean
+        get() = Media3VideoExporter.is4kHardwareEncodingSupported()
 
     // Dynamic speech detection on primary video track
     val isPrimaryVideoSpeechActive: Boolean
@@ -214,8 +270,10 @@ data class EditorUiState(
 class VideoEditorViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: ProjectRepository
+    val exportPresetManager: ExportPresetManager
     val projects: StateFlow<List<ProjectEntity>>
     val importedMedia: StateFlow<List<ImportedMediaEntity>>
+    val exportPresets: StateFlow<List<ExportPresetEntity>>
 
     private val _uiState = MutableStateFlow(EditorUiState())
     val uiState: StateFlow<EditorUiState> = _uiState.asStateFlow()
@@ -225,6 +283,11 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
 
     private var playbackJob: Job? = null
     private var exportJob: Job? = null
+    private var importJob: Job? = null
+    private var autoSaveJob: Job? = null
+    private val autoSaveMutex = Mutex()
+    @Volatile
+    private var lastSavedTimelineSignature: String? = null
 
     init {
         val db = OpenCutDatabase.getDatabase(application)
@@ -232,8 +295,10 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
             projectDao = db.projectDao(),
             importedMediaDao = db.importedMediaDao(),
             projectLayerDao = db.projectLayerDao(),
-            projectEditHistoryDao = db.projectEditHistoryDao()
+            projectEditHistoryDao = db.projectEditHistoryDao(),
+            exportPresetDao = db.exportPresetDao()
         )
+        exportPresetManager = repository.exportPresetManager ?: ExportPresetManager(db.exportPresetDao())
         projects = repository.allProjects.stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(5000),
@@ -244,6 +309,32 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
             SharingStarted.WhileSubscribed(5000),
             emptyList()
         )
+        exportPresets = exportPresetManager.allPresets.stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            emptyList()
+        )
+
+        viewModelScope.launch {
+            runCatching { exportPresetManager.seedDefaultProfilesIfNeeded() }
+            refreshDiskArchivesAndStorage()
+        }
+    }
+
+    fun refreshDiskArchivesAndStorage() {
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            val diskVideos = runCatching { StudioExportUtilities.scanExportedVideos(app) }.getOrDefault(emptyList())
+            val usage = runCatching { StudioExportUtilities.calculateStorageUsage(app).totalBytes }.getOrDefault(0L)
+            _uiState.update { state ->
+                val existingPaths = state.renderedVideos.map { it.localUri }.toSet()
+                val merged = state.renderedVideos + diskVideos.filter { it.localUri !in existingPaths }
+                state.copy(
+                    renderedVideos = merged.sortedByDescending { it.createdAt },
+                    storageUsageBytes = usage
+                )
+            }
+        }
     }
 
     suspend fun openProjectSync(projectId: String) {
@@ -335,6 +426,14 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
             com.example.data.model.EditorWorkspace.EDIT
         }
 
+        val savedResolution = try {
+            ExportResolution.valueOf(project.resolutionName)
+        } catch (_: Exception) {
+            ExportResolution.RES_1080P
+        }
+        val savedBitrate = ExportBitrate.entries.firstOrNull { it.mbps == project.bitrateMbps }
+            ?: ExportBitrate.HIGH_10M
+
         val maxDuration = timelineData.clips.maxOfOrNull { it.timelineEndMs } ?: 1000L
         val resumePositionMs = project.lastPlayheadPositionMs.coerceIn(0L, maxDuration)
 
@@ -346,6 +445,7 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
                 textOverlays = timelineData.textOverlays,
                 stickers = timelineData.stickers,
                 shapes = timelineData.shapes,
+                imageOverlays = timelineData.imageOverlays,
                 aspectRatio = aspect,
                 currentPositionMs = resumePositionMs,
                 isPlaying = false,
@@ -355,6 +455,12 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
                 currentWorkspace = savedWorkspace,
                 projectLayers = layers,
                 editHistory = history,
+                exportBitrate = savedBitrate,
+                exportData = it.exportData.copy(
+                    resolution = savedResolution,
+                    fps = project.fps,
+                    bitrateMbps = savedBitrate.mbps
+                ),
                 isVideoTrackMuted = videoLayer?.isMuted ?: false,
                 isVideoTrackLocked = videoLayer?.isLocked ?: false,
                 isAudioTrackMuted = audioLayer?.isMuted ?: false,
@@ -365,8 +471,13 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
                 isStickerTrackLocked = stickerLayer?.isLocked ?: false,
                 isShapeTrackVisible = shapeLayer?.isVisible ?: true,
                 isShapeTrackLocked = shapeLayer?.isLocked ?: false,
+                lastAutoSavedAtMs = project.updatedAt,
                 statusMessage = "Resumed '${project.title}' at ${formatTime(resumePositionMs)}"
             )
+        }
+        lastSavedTimelineSignature = buildAutoSaveSignature(_uiState.value)
+        if (_uiState.value.isAutoSaveEnabled) {
+            startPeriodicAutoSaveLoop()
         }
     }
 
@@ -393,39 +504,224 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    fun cancelImport() {
+        importJob?.cancel()
+        importJob = null
+        _uiState.update {
+            it.copy(
+                importProgress = ImportProgressState(),
+                statusMessage = "Video import cancelled"
+            )
+        }
+    }
+
+    fun clearImportError() {
+        _uiState.update {
+            it.copy(importProgress = it.importProgress.copy(errorMessage = null))
+        }
+    }
+
+    fun requestPlaybackVerification(media: ImportedMediaEntity) {
+        _uiState.update { it.copy(pendingVerificationMedia = media) }
+    }
+
+    fun dismissVerificationDialog() {
+        _uiState.update { it.copy(pendingVerificationMedia = null) }
+    }
+
+    fun confirmMediaVerifiedAndEnterEditor(
+        media: ImportedMediaEntity,
+        createNewProjectIfNone: Boolean = false,
+        onReadyToEnterEditor: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            repository.setMediaPlaybackVerified(media.id, true)
+            _uiState.update { it.copy(pendingVerificationMedia = null) }
+            val hasProject = _uiState.value.currentProject != null
+            if (!hasProject || createNewProjectIfNone) {
+                val aspect = if (media.height > media.width && media.width > 0) {
+                    AspectRatio.VERTICAL_9_16
+                } else {
+                    AspectRatio.LANDSCAPE_16_9
+                }
+                val cleanTitle = media.name.substringBeforeLast(".").ifBlank { "Imported Project" }
+                val project = repository.createNewProject(
+                    title = cleanTitle,
+                    aspectRatio = aspect,
+                    resolution = ExportResolution.RES_1080P,
+                    withSampleContent = false
+                )
+                openProjectSync(project.id)
+            }
+            appendVerifiedVideoClipToTimeline(media)
+            onReadyToEnterEditor()
+        }
+    }
+
+    private fun appendVerifiedVideoClipToTimeline(media: ImportedMediaEntity) {
+        saveSnapshot("IMPORT_VIDEO", "Added ${media.name} to timeline")
+        val lastEnd = _uiState.value.clips.lastOrNull()?.timelineEndMs ?: 0L
+        val validDuration = media.durationMs.coerceAtLeast(500L)
+        val newClip = VideoClip(
+            id = UUID.randomUUID().toString(),
+            name = media.name,
+            uri = media.uri,
+            sourceDurationMs = validDuration,
+            trimInMs = 0L,
+            trimOutMs = validDuration,
+            timelineStartMs = lastEnd,
+            accentColorHex = 0xFF00E5FF,
+            isVertical = media.height > media.width && media.width > 0,
+            width = media.width,
+            height = media.height,
+            frameRate = if (media.frameRate > 0f) media.frameRate else 30f,
+            videoCodec = media.videoCodec,
+            mimeType = media.mimeType,
+            hasAudio = !media.audioInfo.contains("No Audio", ignoreCase = true),
+            fileSizeBytes = media.sizeBytes,
+            thumbnailPath = media.thumbnailPath
+        )
+        val list = recalculateClipOffsets(_uiState.value.clips + newClip)
+        _uiState.update {
+            it.copy(
+                clips = list,
+                selectedClipId = newClip.id,
+                activeTrack = TrackType.VIDEO,
+                statusMessage = "Added verified video: ${media.name} (${formatTime(validDuration)})"
+            )
+        }
+        autoSaveToRoom()
+    }
+
+    /**
+     * Imports one or multiple device videos from Android Photo Picker or SAF into app-private storage,
+     * validates containers/codecs, caches thumbnails, deduplicates in Room, and optionally opens verification.
+     */
+    fun importMultipleDeviceVideos(
+        uris: List<Uri>,
+        addToCurrentTimeline: Boolean = true,
+        openVerificationOnFinish: Boolean = false,
+        onAllImported: (List<ImportedMediaEntity>) -> Unit = {}
+    ) {
+        if (uris.isEmpty()) return
+        importJob?.cancel()
+        importJob = viewModelScope.launch {
+            val context = getApplication<Application>()
+            val importedList = mutableListOf<ImportedMediaEntity>()
+            var lastError: String? = null
+
+            uris.forEachIndexed { idx, uri ->
+                val nameGuess = DeviceMediaImporter.resolveFileName(context, uri)
+                _uiState.update {
+                    it.copy(
+                        importProgress = ImportProgressState(
+                            isImporting = true,
+                            currentFileName = nameGuess,
+                            currentIndex = idx + 1,
+                            totalCount = uris.size,
+                            progress = 0.05f,
+                            stageLabel = "Preparing ($idx/${uris.size})...",
+                            errorMessage = null
+                        )
+                    )
+                }
+
+                val result = DeviceMediaImporter.importVideoFromUri(context, uri) { progress, stage ->
+                    _uiState.update { state ->
+                        state.copy(
+                            importProgress = state.importProgress.copy(
+                                isImporting = true,
+                                progress = progress,
+                                stageLabel = stage
+                            )
+                        )
+                    }
+                }
+
+                result.onSuccess { res ->
+                    val existing = repository.findDuplicateMedia(res.displayName, res.sizeBytes, res.localUri)
+                    val entity = existing ?: ImportedMediaEntity(
+                        id = UUID.randomUUID().toString(),
+                        name = res.displayName,
+                        uri = res.localUri,
+                        mediaType = "VIDEO",
+                        durationMs = res.durationMs,
+                        sizeBytes = res.sizeBytes,
+                        mimeType = res.mimeType,
+                        addedAt = System.currentTimeMillis(),
+                        width = res.width,
+                        height = res.height,
+                        frameRate = res.frameRate,
+                        rotation = res.rotation,
+                        videoCodec = res.videoCodec,
+                        audioInfo = res.audioInfo,
+                        thumbnailPath = res.thumbnailPath,
+                        isPlaybackVerified = false
+                    )
+                    if (existing == null) {
+                        repository.addImportedMedia(entity)
+                    }
+                    importedList.add(entity)
+                    if (addToCurrentTimeline && _uiState.value.currentProject != null && !openVerificationOnFinish) {
+                        appendVerifiedVideoClipToTimeline(entity)
+                    }
+                }.onFailure { err ->
+                    val msg = err.message ?: "Failed to import \"$nameGuess\""
+                    lastError = msg
+                    MediaDiagnostics.error("IMPORT_UI", msg, uri.toString(), err)
+                }
+            }
+
+            _uiState.update {
+                it.copy(
+                    importProgress = ImportProgressState(
+                        isImporting = false,
+                        errorMessage = if (importedList.isEmpty()) lastError else null
+                    ),
+                    pendingVerificationMedia = if (openVerificationOnFinish && importedList.size == 1) {
+                        importedList.first()
+                    } else {
+                        it.pendingVerificationMedia
+                    },
+                    statusMessage = when {
+                        importedList.isNotEmpty() && lastError != null ->
+                            "Imported ${importedList.size} video(s); 1 skipped: $lastError"
+                        importedList.size == 1 ->
+                            "Imported '${importedList.first().name}' (${importedList.first().width}x${importedList.first().height})"
+                        importedList.isNotEmpty() ->
+                            "Imported ${importedList.size} device videos to library"
+                        else -> lastError ?: "Video import failed"
+                    }
+                )
+            }
+            if (importedList.isNotEmpty()) {
+                onAllImported(importedList)
+            }
+        }
+    }
+
     fun createProjectFromDeviceMedia(
         uriString: String,
         name: String,
         onOpened: () -> Unit = {}
     ) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(statusMessage = "Importing video from device...") }
-            val context = getApplication<Application>()
-            val parsedUri = try { android.net.Uri.parse(uriString) } catch (_: Exception) { null }
-            val resolvedName = if (parsedUri != null) {
-                DeviceMediaImporter.resolveFileName(context, parsedUri)
-            } else {
-                name
+        val parsedUri = try { Uri.parse(uriString) } catch (_: Exception) { null }
+        if (parsedUri == null) {
+            _uiState.update {
+                it.copy(
+                    importProgress = ImportProgressState(isImporting = false, errorMessage = "Invalid video URI."),
+                    statusMessage = "Invalid video URI"
+                )
             }
-            val localFile = if (parsedUri != null) {
-                DeviceMediaImporter.copyUriToAppStorage(context, parsedUri, resolvedName)
-            } else null
-            val effectiveUri = localFile?.absolutePath ?: uriString
-            val metadata = DeviceMediaImporter.extractMetadata(context, effectiveUri)
-
-            val cleanTitle = resolvedName.substringBeforeLast(".").ifBlank { "Imported Video" }
-            val projectAspect = if (metadata.isVertical) AspectRatio.VERTICAL_9_16 else AspectRatio.LANDSCAPE_16_9
-
-            val project = repository.createNewProject(
-                title = cleanTitle,
-                aspectRatio = projectAspect,
-                resolution = ExportResolution.RES_1080P,
-                withSampleContent = false
-            )
-            openProjectSync(project.id)
-            addCustomMediaClip(effectiveUri, resolvedName, metadata.durationMs)
-            _uiState.update { it.copy(statusMessage = "Imported device video: $resolvedName (${formatTime(metadata.durationMs)})") }
-            onOpened()
+            return
+        }
+        importMultipleDeviceVideos(
+            uris = listOf(parsedUri),
+            addToCurrentTimeline = false,
+            openVerificationOnFinish = false
+        ) { imported ->
+            val entity = imported.firstOrNull() ?: return@importMultipleDeviceVideos
+            confirmMediaVerifiedAndEnterEditor(entity, createNewProjectIfNone = true, onReadyToEnterEditor = onOpened)
         }
     }
 
@@ -689,7 +985,8 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
             audioClips = _uiState.value.audioClips,
             textOverlays = _uiState.value.textOverlays,
             stickers = _uiState.value.stickers,
-            shapes = _uiState.value.shapes
+            shapes = _uiState.value.shapes,
+            imageOverlays = _uiState.value.imageOverlays
         )
         undoStack.add(current)
         if (undoStack.size > 25) {
@@ -700,15 +997,17 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
 
         val projId = _uiState.value.currentProject?.id
         if (projId != null) {
-            viewModelScope.launch {
+            val stepIdx = undoStack.size
+            val posMs = _uiState.value.currentPositionMs
+            viewModelScope.launch(Dispatchers.IO) {
                 val serialized = TimelineSerializer.serialize(current)
                 repository.recordHistoryStep(
                     projectId = projId,
-                    stepIndex = undoStack.size,
+                    stepIndex = stepIdx,
                     actionType = actionType,
                     actionDescription = actionDescription,
                     timelineJson = serialized,
-                    playheadMs = _uiState.value.currentPositionMs
+                    playheadMs = posMs
                 )
                 val updatedHistory = repository.getEditHistoryList(projId)
                 _uiState.update { it.copy(editHistory = updatedHistory) }
@@ -725,7 +1024,8 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
             audioClips = _uiState.value.audioClips,
             textOverlays = _uiState.value.textOverlays,
             stickers = _uiState.value.stickers,
-            shapes = _uiState.value.shapes
+            shapes = _uiState.value.shapes,
+            imageOverlays = _uiState.value.imageOverlays
         )
         redoStack.add(current)
 
@@ -736,6 +1036,7 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
                 textOverlays = previous.textOverlays,
                 stickers = previous.stickers,
                 shapes = previous.shapes,
+                imageOverlays = previous.imageOverlays,
                 canUndo = undoStack.isNotEmpty(),
                 canRedo = true,
                 statusMessage = "Undo action"
@@ -752,7 +1053,8 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
             audioClips = _uiState.value.audioClips,
             textOverlays = _uiState.value.textOverlays,
             stickers = _uiState.value.stickers,
-            shapes = _uiState.value.shapes
+            shapes = _uiState.value.shapes,
+            imageOverlays = _uiState.value.imageOverlays
         )
         undoStack.add(current)
 
@@ -763,6 +1065,7 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
                 textOverlays = next.textOverlays,
                 stickers = next.stickers,
                 shapes = next.shapes,
+                imageOverlays = next.imageOverlays,
                 canUndo = true,
                 canRedo = redoStack.isNotEmpty(),
                 statusMessage = "Redo action"
@@ -944,7 +1247,7 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
             if (clip.id == clipId) {
                 val validIn = newTrimInMs.coerceIn(0L, clip.sourceDurationMs - 200L)
                 val validOut = newTrimOutMs.coerceIn(validIn + 200L, clip.sourceDurationMs)
-                clip.copy(trimInMs = validIn, trimOutMs = validOut)
+                KeyframeEngine.clampKeyframesToDuration(clip.copy(trimInMs = validIn, trimOutMs = validOut))
             } else clip
         }
         val reordered = recalculateClipOffsets(newClips)
@@ -1059,29 +1362,65 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
         autoSaveToRoom()
     }
 
-    // Transition
+    // Transition Management (via TransitionsManager)
+    fun getTransitionSeams(): List<TransitionSeam> {
+        return TransitionsManager.discoverSeams(_uiState.value.clips)
+    }
+
     fun setTransition(clipId: String, transition: TransitionType, durationMs: Long = 600L) {
-        saveSnapshot()
+        saveSnapshot("TRANSITION", "${transition.displayName} (${durationMs}ms)")
         _uiState.update { state ->
+            val updated = TransitionsManager.applyTransitionToSeam(
+                clips = state.clips,
+                incomingClipId = clipId,
+                transition = transition,
+                durationMs = durationMs
+            )
             state.copy(
-                clips = state.clips.map {
-                    if (it.id == clipId) it.copy(transitionIn = transition, transitionDurationMs = durationMs) else it
-                },
-                statusMessage = "Transition set to: ${transition.displayName}"
+                clips = updated,
+                statusMessage = if (transition == TransitionType.NONE) {
+                    "Removed transition"
+                } else {
+                    "Transition set to ${transition.displayName}"
+                }
             )
         }
         autoSaveToRoom()
     }
 
-    fun applyTransitionToAllClips(transition: TransitionType, durationMs: Long = 600L) {
-        saveSnapshot()
+    fun removeTransition(clipId: String) {
+        setTransition(clipId, TransitionType.NONE, 0L)
+    }
+
+    fun applyTransitionToAllClips(
+        transition: TransitionType,
+        durationMs: Long = 600L,
+        includeIntro: Boolean = true
+    ) {
+        saveSnapshot("TRANSITION_ALL", "${transition.displayName} applied to cuts")
         _uiState.update { state ->
+            val updated = TransitionsManager.applyTransitionToAllCuts(
+                clips = state.clips,
+                transition = transition,
+                durationMs = durationMs,
+                includeIntro = includeIntro
+            )
             state.copy(
-                clips = state.clips.map { it.copy(transitionIn = transition, transitionDurationMs = durationMs) },
-                statusMessage = "Applied ${transition.displayName} to all clips"
+                clips = updated,
+                statusMessage = "Applied ${transition.displayName} to ${if (includeIntro) "all clips" else "all cuts"}"
             )
         }
         autoSaveToRoom()
+    }
+
+    fun previewTransitionCut(clipId: String) {
+        val clips = _uiState.value.clips
+        val targetClip = clips.find { it.id == clipId } ?: return
+        val preRollStart = (targetClip.timelineStartMs - 700L).coerceAtLeast(0L)
+        seekTo(preRollStart)
+        if (!_uiState.value.isPlaying) {
+            togglePlayPause()
+        }
     }
 
     // Freeze Frame (LibreCuts & OpenCut feature: freeze frame still at playhead)
@@ -1126,20 +1465,62 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
         autoSaveToRoom()
     }
 
-    // Reverse Clip (OpenCut feature)
+    // Reverse Clip (Real frame-by-frame reverse via MediaCodec for local <= 15s clips; sample toggle for tests)
     fun toggleClipReverse(clipId: String) {
-        saveSnapshot()
-        _uiState.update { state ->
-            val updated = state.clips.map {
-                if (it.id == clipId) it.copy(isReversed = !it.isReversed) else it
+        val clip = _uiState.value.clips.find { it.id == clipId } ?: return
+        if (clip.uri.isBlank() || clip.uri.startsWith("sample://") || clip.isReversed) {
+            saveSnapshot("REVERSE_CLIP", "Toggled reverse on ${clip.name}")
+            _uiState.update { state ->
+                val updated = state.clips.map {
+                    if (it.id == clipId) it.copy(isReversed = !it.isReversed) else it
+                }
+                val isNowReversed = updated.find { it.id == clipId }?.isReversed == true
+                state.copy(
+                    clips = updated,
+                    statusMessage = if (isNowReversed) "Reversed clip playback (Plays Backwards)" else "Normal playback direction restored"
+                )
             }
-            val isNowReversed = updated.find { it.id == clipId }?.isReversed == true
-            state.copy(
-                clips = updated,
-                statusMessage = if (isNowReversed) "Reversed clip playback (Plays Backwards)" else "Normal playback direction restored"
-            )
+            autoSaveToRoom()
+            return
         }
-        autoSaveToRoom()
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(statusMessage = "Reversing '${clip.name}' via hardware encoder...") }
+            val result = DeviceMediaImporter.reverseShortVideoClip(
+                context = getApplication(),
+                sourcePathOrUri = clip.uri,
+                trimInMs = clip.trimInMs,
+                trimOutMs = clip.trimOutMs,
+                clipName = clip.name
+            )
+            result.onSuccess { reversedFile ->
+                saveSnapshot("REVERSE_CLIP", "Reversed ${clip.name}")
+                val meta = DeviceMediaImporter.extractMetadata(getApplication(), reversedFile.absolutePath, clip.trimmedDurationMs)
+                _uiState.update { state ->
+                    val updated = state.clips.map {
+                        if (it.id == clipId) {
+                            it.copy(
+                                uri = reversedFile.absolutePath,
+                                sourceDurationMs = meta.durationMs,
+                                trimInMs = 0L,
+                                trimOutMs = meta.durationMs,
+                                isReversed = true
+                            )
+                        } else it
+                    }
+                    state.copy(
+                        clips = recalculateClipOffsets(updated),
+                        statusMessage = "Clip reversed and ready for playback"
+                    )
+                }
+                autoSaveToRoom()
+            }.onFailure { err ->
+                MediaDiagnostics.error("REVERSE_CLIP", err.message ?: "Reverse failed", clip.uri, err)
+                _uiState.update {
+                    it.copy(statusMessage = err.message ?: "Could not reverse this clip")
+                }
+            }
+        }
     }
 
     // Keyframe Dynamic Zoom (OpenReel & LibreCuts keyframe feature)
@@ -1836,80 +2217,167 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
 
 
     fun addCustomMediaClip(uriString: String, name: String, durationMs: Long = 6000L) {
-        saveSnapshot()
-        val lastEnd = _uiState.value.clips.lastOrNull()?.timelineEndMs ?: 0L
-        val context = getApplication<Application>()
-        val parsedUri = try { android.net.Uri.parse(uriString) } catch (_: Exception) { null }
-
-        val resolvedName = if (parsedUri != null) {
-            DeviceMediaImporter.resolveFileName(context, parsedUri).ifBlank { name }
-        } else {
-            name
+        if (uriString.startsWith("content://")) {
+            val uri = try { Uri.parse(uriString) } catch (_: Exception) { null }
+            if (uri != null) {
+                importMultipleDeviceVideos(listOf(uri), addToCurrentTimeline = true, openVerificationOnFinish = false)
+            }
+            return
         }
 
-        // Copy content stream to persistent app storage so URI permissions never expire across restarts
-        val persistentFile = if (parsedUri != null && uriString.startsWith("content://")) {
-            DeviceMediaImporter.copyUriToAppStorageSync(context, parsedUri, resolvedName)
-        } else null
-        val persistentUri: String = persistentFile?.absolutePath ?: uriString
+        val context = getApplication<Application>()
+        if (uriString.startsWith("sample://")) {
+            saveSnapshot("ADD_CLIP", "Added sample clip $name")
+            val lastEnd = _uiState.value.clips.lastOrNull()?.timelineEndMs ?: 0L
+            val newClip = VideoClip(
+                id = UUID.randomUUID().toString(),
+                name = name,
+                uri = uriString,
+                sourceDurationMs = durationMs,
+                trimInMs = 0L,
+                trimOutMs = durationMs,
+                timelineStartMs = lastEnd,
+                accentColorHex = 0xFF00E5FF
+            )
+            val list = recalculateClipOffsets(_uiState.value.clips + newClip)
+            _uiState.update {
+                it.copy(
+                    clips = list,
+                    selectedClipId = newClip.id,
+                    statusMessage = "Added video: $name (${formatTime(durationMs)})"
+                )
+            }
+            autoSaveToRoom()
+            return
+        }
 
-        val metadata = DeviceMediaImporter.extractMetadata(context, persistentUri, durationMs)
-        val resolvedDuration = if (uriString.startsWith("sample://")) durationMs else if (metadata.durationMs > 200L) metadata.durationMs else durationMs
+        val validation = DeviceMediaImporter.validateAndExtractVideoMetadata(context, uriString)
+        if (validation is com.example.util.MediaValidationResult.Invalid) {
+            MediaDiagnostics.error("ADD_CLIP", validation.userMessage, validation.technicalReason)
+            _uiState.update { it.copy(statusMessage = validation.userMessage) }
+            return
+        }
 
+        val metadata = (validation as com.example.util.MediaValidationResult.Valid).metadata
+        saveSnapshot("ADD_CLIP", "Added clip $name")
+        val lastEnd = _uiState.value.clips.lastOrNull()?.timelineEndMs ?: 0L
+        val resolvedName = name.ifBlank { File(uriString.removePrefix("file://")).name }
         val newClip = VideoClip(
             id = UUID.randomUUID().toString(),
             name = resolvedName,
-            uri = persistentUri,
-            sourceDurationMs = resolvedDuration,
+            uri = uriString,
+            sourceDurationMs = metadata.durationMs,
             trimInMs = 0L,
-            trimOutMs = resolvedDuration,
+            trimOutMs = metadata.durationMs,
             timelineStartMs = lastEnd,
             accentColorHex = 0xFF00E5FF,
-            isVertical = metadata.isVertical
+            isVertical = metadata.isVertical,
+            width = metadata.width,
+            height = metadata.height,
+            frameRate = metadata.frameRate,
+            videoCodec = metadata.videoCodec,
+            mimeType = metadata.mimeType,
+            hasAudio = metadata.hasAudio,
+            fileSizeBytes = metadata.sizeBytes
         )
         val list = recalculateClipOffsets(_uiState.value.clips + newClip)
         _uiState.update {
             it.copy(
                 clips = list,
                 selectedClipId = newClip.id,
-                statusMessage = "Imported custom video: $resolvedName (${formatTime(resolvedDuration)})"
+                statusMessage = "Imported custom video: $resolvedName (${formatTime(metadata.durationMs)})"
             )
         }
         autoSaveToRoom()
     }
 
     fun addCustomImageClip(uriString: String, name: String, durationMs: Long = 4000L) {
-        saveSnapshot()
-        val lastEnd = _uiState.value.clips.lastOrNull()?.timelineEndMs ?: 0L
-        val newClip = VideoClip(
+        addImageOverlayFromUri(uriString, name, durationMs)
+    }
+
+    fun addImageOverlayFromUri(uriString: String, name: String = "Image Overlay", durationMs: Long = 4000L) {
+        if (uriString.startsWith("content://")) {
+            viewModelScope.launch {
+                val res = DeviceMediaImporter.importImageFromUri(getApplication(), Uri.parse(uriString))
+                res.onSuccess { (file, resolvedName) ->
+                    appendImageOverlay(file.absolutePath, resolvedName, durationMs)
+                }.onFailure { err ->
+                    _uiState.update { it.copy(statusMessage = err.message ?: "Unsupported image file") }
+                }
+            }
+        } else {
+            appendImageOverlay(uriString, name, durationMs)
+        }
+    }
+
+    private fun appendImageOverlay(uri: String, name: String, durationMs: Long) {
+        saveSnapshot("ADD_IMAGE_OVERLAY", "Added image overlay $name")
+        val newOverlay = ImageOverlay(
             id = UUID.randomUUID().toString(),
             name = name,
-            uri = uriString,
-            sourceDurationMs = durationMs,
-            trimInMs = 0L,
-            trimOutMs = durationMs,
-            timelineStartMs = lastEnd,
-            accentColorHex = 0xFFEC4899
+            uri = uri,
+            timelineStartMs = _uiState.value.currentPositionMs,
+            durationMs = durationMs
         )
-        val list = recalculateClipOffsets(_uiState.value.clips + newClip)
         _uiState.update {
             it.copy(
-                clips = list,
-                selectedClipId = newClip.id,
-                statusMessage = "Imported photo clip: $name"
+                imageOverlays = it.imageOverlays + newOverlay,
+                selectedImageOverlayId = newOverlay.id,
+                activeTrack = TrackType.OVERLAY,
+                statusMessage = "Added image overlay: $name"
+            )
+        }
+        autoSaveToRoom()
+    }
+
+    fun selectImageOverlay(id: String?) {
+        _uiState.update {
+            it.copy(
+                selectedImageOverlayId = id,
+                selectedClipId = null,
+                selectedAudioId = null,
+                selectedTextId = null,
+                selectedStickerId = null,
+                activeTrack = TrackType.OVERLAY
+            )
+        }
+    }
+
+    fun deleteImageOverlay(id: String) {
+        saveSnapshot("DELETE_IMAGE_OVERLAY", "Removed image overlay")
+        _uiState.update {
+            it.copy(
+                imageOverlays = it.imageOverlays.filterNot { img -> img.id == id },
+                selectedImageOverlayId = null,
+                statusMessage = "Removed image overlay"
             )
         }
         autoSaveToRoom()
     }
 
     fun addCustomAudioClip(uriString: String, name: String, durationMs: Long = 30000L) {
-        saveSnapshot()
+        if (uriString.startsWith("content://")) {
+            viewModelScope.launch {
+                val res = DeviceMediaImporter.importAudioFromUri(getApplication(), Uri.parse(uriString))
+                res.onSuccess { (file, resolvedName, resolvedDur) ->
+                    appendAudioTrack(file.absolutePath, resolvedName, resolvedDur)
+                }.onFailure { err ->
+                    _uiState.update { it.copy(statusMessage = err.message ?: "Could not import audio track") }
+                }
+            }
+        } else {
+            appendAudioTrack(uriString, name, durationMs)
+        }
+    }
+
+    private fun appendAudioTrack(uriString: String, name: String, durationMs: Long) {
+        saveSnapshot("ADD_AUDIO", "Added audio track $name")
         val newAudio = AudioTrackItem(
             id = UUID.randomUUID().toString(),
             name = name,
             uri = uriString,
             timelineStartMs = _uiState.value.currentPositionMs,
-            durationMs = durationMs,
+            durationMs = durationMs.coerceAtLeast(500L),
             category = AudioCategory.MUSIC,
             accentColorHex = 0xFF10B981
         )
@@ -1918,41 +2386,270 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
                 audioClips = it.audioClips + newAudio,
                 selectedAudioId = newAudio.id,
                 activeTrack = TrackType.AUDIO,
-                statusMessage = "Imported audio soundtrack: $name"
+                statusMessage = "Imported audio soundtrack: $name (${formatTime(durationMs)})"
             )
         }
         autoSaveToRoom()
     }
 
-    fun importDeviceMedia(uriString: String, name: String, type: String, durationMs: Long = 0L, sizeBytes: Long = 0L) {
+    fun replaceClipAudioWithUri(clipId: String, uriString: String) {
+        val clip = _uiState.value.clips.find { it.id == clipId } ?: return
         viewModelScope.launch {
-            var resolvedDuration = durationMs
-            if (resolvedDuration <= 0L && type.equals("VIDEO", ignoreCase = true)) {
-                try {
-                    val retriever = android.media.MediaMetadataRetriever()
-                    if (uriString.startsWith("content://") || uriString.startsWith("file://")) {
-                        retriever.setDataSource(getApplication(), android.net.Uri.parse(uriString))
-                    } else {
-                        retriever.setDataSource(uriString)
-                    }
-                    val durStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
-                    resolvedDuration = durStr?.toLongOrNull() ?: 6000L
-                    retriever.release()
-                } catch (_: Exception) {
-                    resolvedDuration = 6000L
+            val res = DeviceMediaImporter.importAudioFromUri(getApplication(), Uri.parse(uriString))
+            res.onSuccess { (file, resolvedName, audioDur) ->
+                saveSnapshot("REPLACE_AUDIO", "Replaced audio on ${clip.name}")
+                val replacedAudio = AudioTrackItem(
+                    id = UUID.randomUUID().toString(),
+                    name = "$resolvedName (Replacement)",
+                    uri = file.absolutePath,
+                    timelineStartMs = clip.timelineStartMs,
+                    durationMs = minOf(audioDur, clip.trimmedDurationMs).coerceAtLeast(500L),
+                    volume = 1.0f,
+                    category = AudioCategory.MUSIC,
+                    accentColorHex = 0xFF10B981
+                )
+                _uiState.update { state ->
+                    state.copy(
+                        clips = state.clips.map { if (it.id == clipId) it.copy(isMuted = true) else it },
+                        audioClips = state.audioClips + replacedAudio,
+                        selectedAudioId = replacedAudio.id,
+                        statusMessage = "Replaced clip audio with '$resolvedName'"
+                    )
+                }
+                autoSaveToRoom()
+            }.onFailure { err ->
+                _uiState.update { it.copy(statusMessage = err.message ?: "Failed replacing clip audio") }
+            }
+        }
+    }
+
+    fun updateClipCrop(clipId: String, left: Float, top: Float, right: Float, bottom: Float) {
+        val l = left.coerceIn(0f, 0.8f)
+        val t = top.coerceIn(0f, 0.8f)
+        val r = right.coerceIn(l + 0.15f, 1f)
+        val b = bottom.coerceIn(t + 0.15f, 1f)
+        saveSnapshot("CROP_CLIP", "Cropped video frame")
+        _uiState.update { state ->
+            state.copy(
+                clips = state.clips.map {
+                    if (it.id == clipId) it.copy(cropLeft = l, cropTop = t, cropRight = r, cropBottom = b) else it
+                },
+                statusMessage = "Updated frame crop"
+            )
+        }
+        autoSaveToRoom()
+    }
+
+    fun resetClipCrop(clipId: String) {
+        updateClipCrop(clipId, 0f, 0f, 1f, 1f)
+    }
+
+    fun updateClipResize(clipId: String, width: Int, height: Int) {
+        saveSnapshot("RESIZE_CLIP", "Resized clip output to ${width}x${height}")
+        _uiState.update { state ->
+            state.copy(
+                clips = state.clips.map {
+                    if (it.id == clipId) it.copy(resizeWidth = width, resizeHeight = height) else it
+                },
+                statusMessage = if (width > 0 && height > 0) "Clip resized to ${width}x${height}" else "Clip size reset to auto"
+            )
+        }
+        autoSaveToRoom()
+    }
+
+    fun updateClipAudioFades(clipId: String, fadeInMs: Long, fadeOutMs: Long) {
+        saveSnapshot("CLIP_FADES", "Updated clip fade-in/out")
+        _uiState.update { state ->
+            state.copy(
+                clips = state.clips.map {
+                    if (it.id == clipId) it.copy(fadeInMs = fadeInMs.coerceAtLeast(0L), fadeOutMs = fadeOutMs.coerceAtLeast(0L)) else it
+                },
+                statusMessage = "Clip fades set (${fadeInMs}ms in / ${fadeOutMs}ms out)"
+            )
+        }
+        autoSaveToRoom()
+    }
+
+    fun setMasterVolume(volume: Float) {
+        _uiState.update { it.copy(masterVolume = volume.coerceIn(0f, 1f)) }
+    }
+
+    /**
+     * Merges the selected video clip with the next clip on the timeline.
+     * Contiguous segments from the same file collapse cleanly; distinct files are stitched with Media3 Transformer.
+     */
+    fun mergeSelectedClipWithNext() {
+        val currentClips = _uiState.value.clips
+        val selectedId = _uiState.value.selectedClipId ?: currentClips.firstOrNull()?.id ?: return
+        val idx = currentClips.indexOfFirst { it.id == selectedId }
+        if (idx == -1 || idx >= currentClips.lastIndex) {
+            _uiState.update { it.copy(statusMessage = "Select a clip followed by another clip to merge") }
+            return
+        }
+        val first = currentClips[idx]
+        val second = currentClips[idx + 1]
+
+        // Fast path: same source URI & non-decreasing contiguous segment or sample clips
+        if ((first.uri == second.uri && first.trimOutMs <= second.trimInMs + 50L) ||
+            first.uri.startsWith("sample://") || second.uri.startsWith("sample://")
+        ) {
+            saveSnapshot("MERGE_CLIPS", "Merged ${first.name} + ${second.name}")
+            val mergedDur = if (first.uri == second.uri) {
+                (second.trimOutMs - first.trimInMs).coerceAtLeast(first.trimmedDurationMs)
+            } else {
+                first.trimmedDurationMs + second.trimmedDurationMs
+            }
+            val merged = first.copy(
+                id = UUID.randomUUID().toString(),
+                name = "${first.name.substringBefore(" (")} + Merged",
+                sourceDurationMs = maxOf(first.sourceDurationMs, mergedDur),
+                trimOutMs = if (first.uri == second.uri) second.trimOutMs else mergedDur
+            )
+            val newList = currentClips.toMutableList().apply {
+                removeAt(idx + 1)
+                set(idx, merged)
+            }
+            val reordered = recalculateClipOffsets(newList)
+            _uiState.update {
+                it.copy(
+                    clips = reordered,
+                    selectedClipId = merged.id,
+                    statusMessage = "Merged 2 clips seamlessly"
+                )
+            }
+            autoSaveToRoom()
+            return
+        }
+
+        // Real MP4 stitch via Media3 Transformer
+        viewModelScope.launch {
+            _uiState.update { it.copy(statusMessage = "Merging clips into unified MP4...") }
+            val outName = "merged_${System.currentTimeMillis() % 10000}.mp4"
+            val result = Media3VideoExporter.exportTimelineToMp4(
+                context = getApplication(),
+                clips = listOf(first, second),
+                audioClips = emptyList(),
+                textOverlays = emptyList(),
+                imageOverlays = emptyList(),
+                aspectRatio = _uiState.value.aspectRatio,
+                resolution = ExportResolution.RES_720P,
+                fps = 30,
+                bitrateMbps = 8,
+                outputFileName = outName,
+                isVideoTrackMuted = false,
+                isAudioTrackMuted = false,
+                isAutoDuckingMasterEnabled = false,
+                autoDuckingLevel = 1f,
+                onProgress = {}
+            )
+            result.onSuccess { outcome ->
+                saveSnapshot("MERGE_CLIPS", "Merged ${first.name} + ${second.name}")
+                val meta = DeviceMediaImporter.extractMetadata(getApplication(), outcome.outputFile.absolutePath, outcome.durationMs)
+                val merged = first.copy(
+                    id = UUID.randomUUID().toString(),
+                    name = "Merged_${first.name.take(12)}",
+                    uri = outcome.outputFile.absolutePath,
+                    sourceDurationMs = meta.durationMs,
+                    trimInMs = 0L,
+                    trimOutMs = meta.durationMs,
+                    width = meta.width,
+                    height = meta.height,
+                    fileSizeBytes = outcome.fileSizeBytes
+                )
+                val updated = currentClips.toMutableList().apply {
+                    removeAt(idx + 1)
+                    set(idx, merged)
+                }
+                _uiState.update {
+                    it.copy(
+                        clips = recalculateClipOffsets(updated),
+                        selectedClipId = merged.id,
+                        statusMessage = "Merged clips into MP4 (${formatTime(meta.durationMs)})"
+                    )
+                }
+                autoSaveToRoom()
+            }.onFailure { err ->
+                MediaDiagnostics.error("MERGE_CLIPS", "Merge failed", err.message ?: "", err)
+                _uiState.update {
+                    it.copy(statusMessage = "Merge failed: ${err.message ?: "Incompatible formats"}")
                 }
             }
-            val entity = ImportedMediaEntity(
-                id = UUID.randomUUID().toString(),
-                name = name.ifBlank { "Imported $type" },
-                uri = uriString,
-                mediaType = type, // "VIDEO", "IMAGE", "AUDIO"
-                durationMs = resolvedDuration,
-                sizeBytes = sizeBytes,
-                addedAt = System.currentTimeMillis()
-            )
-            repository.addImportedMedia(entity)
-            _uiState.update { it.copy(statusMessage = "Added \"${entity.name}\" to Device Library") }
+        }
+    }
+
+    fun importDeviceMedia(uriString: String, name: String, type: String, durationMs: Long = 0L, sizeBytes: Long = 0L) {
+        val parsedUri = try { Uri.parse(uriString) } catch (_: Exception) { null }
+        when (type.uppercase()) {
+            "VIDEO" -> {
+                if (parsedUri != null && uriString.startsWith("content://")) {
+                    importMultipleDeviceVideos(listOf(parsedUri), addToCurrentTimeline = false)
+                } else {
+                    viewModelScope.launch {
+                        val entity = ImportedMediaEntity(
+                            id = UUID.randomUUID().toString(),
+                            name = name.ifBlank { "Imported Video" },
+                            uri = uriString,
+                            mediaType = "VIDEO",
+                            durationMs = durationMs.coerceAtLeast(1000L),
+                            sizeBytes = sizeBytes,
+                            addedAt = System.currentTimeMillis()
+                        )
+                        repository.addImportedMedia(entity)
+                        _uiState.update { it.copy(statusMessage = "Added \"${entity.name}\" to Device Library") }
+                    }
+                }
+            }
+            "AUDIO" -> {
+                viewModelScope.launch {
+                    val context = getApplication<Application>()
+                    val res = if (parsedUri != null) {
+                        DeviceMediaImporter.importAudioFromUri(context, parsedUri)
+                    } else {
+                        Result.failure(IllegalArgumentException("Invalid audio URI"))
+                    }
+                    res.onSuccess { (file, resolvedName, resolvedDur) ->
+                        val entity = ImportedMediaEntity(
+                            id = UUID.randomUUID().toString(),
+                            name = resolvedName,
+                            uri = file.absolutePath,
+                            mediaType = "AUDIO",
+                            durationMs = resolvedDur,
+                            sizeBytes = file.length(),
+                            addedAt = System.currentTimeMillis()
+                        )
+                        repository.addImportedMedia(entity)
+                        _uiState.update { it.copy(statusMessage = "Imported audio \"${entity.name}\"") }
+                    }.onFailure { err ->
+                        _uiState.update { it.copy(statusMessage = err.message ?: "Failed importing audio") }
+                    }
+                }
+            }
+            "IMAGE" -> {
+                viewModelScope.launch {
+                    val context = getApplication<Application>()
+                    val res = if (parsedUri != null) {
+                        DeviceMediaImporter.importImageFromUri(context, parsedUri)
+                    } else {
+                        Result.failure(IllegalArgumentException("Invalid image URI"))
+                    }
+                    res.onSuccess { (file, resolvedName) ->
+                        val entity = ImportedMediaEntity(
+                            id = UUID.randomUUID().toString(),
+                            name = resolvedName,
+                            uri = file.absolutePath,
+                            mediaType = "IMAGE",
+                            durationMs = 4000L,
+                            sizeBytes = file.length(),
+                            thumbnailPath = file.absolutePath,
+                            addedAt = System.currentTimeMillis()
+                        )
+                        repository.addImportedMedia(entity)
+                        _uiState.update { it.copy(statusMessage = "Imported image \"${entity.name}\"") }
+                    }.onFailure { err ->
+                        _uiState.update { it.copy(statusMessage = err.message ?: "Failed importing image") }
+                    }
+                }
+            }
         }
     }
 
@@ -1965,10 +2662,16 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
 
     fun addImportedMediaToTimeline(media: ImportedMediaEntity) {
         when (media.mediaType.uppercase()) {
-            "VIDEO" -> addCustomMediaClip(media.uri, media.name, if (media.durationMs > 0) media.durationMs else 6000L)
-            "IMAGE" -> addCustomImageClip(media.uri, media.name, if (media.durationMs > 0) media.durationMs else 4000L)
-            "AUDIO" -> addCustomAudioClip(media.uri, media.name, if (media.durationMs > 0) media.durationMs else 30000L)
-            else -> addCustomMediaClip(media.uri, media.name)
+            "VIDEO" -> {
+                if (!media.isPlaybackVerified && !media.uri.startsWith("sample://")) {
+                    requestPlaybackVerification(media)
+                } else {
+                    appendVerifiedVideoClipToTimeline(media)
+                }
+            }
+            "IMAGE" -> addImageOverlayFromUri(media.uri, media.name, if (media.durationMs > 0) media.durationMs else 4000L)
+            "AUDIO" -> appendAudioTrack(media.uri, media.name, if (media.durationMs > 0) media.durationMs else 15000L)
+            else -> appendVerifiedVideoClipToTimeline(media)
         }
     }
 
@@ -2143,11 +2846,37 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
     fun toggleAudioPicker(show: Boolean) = _uiState.update { it.copy(showAudioPickerSheet = show) }
     fun toggleCanvasBgSheet(show: Boolean) = _uiState.update { it.copy(showCanvasBgSheet = show) }
     fun toggleKeyframeSheet(show: Boolean) = _uiState.update { it.copy(showKeyframeSheet = show) }
-    fun toggleKeyframeOverlay(show: Boolean? = null) = _uiState.update { it.copy(showKeyframeOverlay = show ?: !it.showKeyframeOverlay) }
+    fun toggleKeyframeOverlay(show: Boolean? = null) {
+        _uiState.update { state ->
+            val nextShow = show ?: !state.showKeyframeOverlay
+            val fallbackClipId = if (nextShow && state.selectedClipId == null && state.selectedImageOverlayId == null) {
+                (state.activeClipAtPlayhead ?: state.clips.firstOrNull())?.id
+            } else {
+                state.selectedClipId
+            }
+            val fallbackImageId = if (nextShow && fallbackClipId == null && state.selectedImageOverlayId == null) {
+                (state.activeImageOverlays.firstOrNull() ?: state.imageOverlays.firstOrNull())?.id
+            } else {
+                state.selectedImageOverlayId
+            }
+            state.copy(
+                showKeyframeOverlay = nextShow,
+                selectedClipId = fallbackClipId,
+                selectedImageOverlayId = fallbackImageId
+            )
+        }
+    }
     fun toggleChromaKeySheet(show: Boolean) = _uiState.update { it.copy(showChromaKeySheet = show) }
     fun toggleEffectsSheet(show: Boolean) = _uiState.update { it.copy(showEffectsSheet = show) }
     fun toggleRazorSheet(show: Boolean) = _uiState.update { it.copy(showRazorSheet = show) }
     fun toggleTitleTemplatesSheet(show: Boolean) = _uiState.update { it.copy(showTitleTemplatesSheet = show) }
+    fun toggleCropResizeSheet(show: Boolean) = _uiState.update { it.copy(showCropResizeSheet = show) }
+    fun toggleClipFadesSheet(show: Boolean) = _uiState.update { it.copy(showClipFadesSheet = show) }
+    fun toggleDiagnosticsDialog(show: Boolean) = _uiState.update { it.copy(showDiagnosticsDialog = show) }
+    fun toggleFullscreenPreview(show: Boolean) = _uiState.update { it.copy(showFullscreenPreview = show) }
+    fun setExportBitrate(bitrate: ExportBitrate) = _uiState.update {
+        it.copy(exportBitrate = bitrate, exportData = it.exportData.copy(bitrateMbps = bitrate.mbps))
+    }
     fun toggleExportDialog(show: Boolean) = _uiState.update { it.copy(showExportDialog = show, exportCompleted = false, exportProgress = 0f) }
 
     // OpenShot Video Effects Engine (Hue Shift, Invert, Pixelate, Vignette, Letterbox, Wave)
@@ -2218,17 +2947,28 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
         autoSaveToRoom()
     }
 
-    // OpenShot Keyframe Animation Engine
+    // OpenShot Keyframe Animation Engine (supports both VideoClip & ImageOverlay clips)
     fun addKeyframe(clipId: String, keyframe: OpenShotKeyframe) {
         saveSnapshot()
         _uiState.update { state ->
+            val isImageTarget = state.imageOverlays.any { it.id == clipId }
             state.copy(
-                clips = state.clips.map { clip ->
-                    if (clip.id == clipId) {
-                        val updated = (clip.keyframes + keyframe).sortedBy { it.timeOffsetMs }
-                        clip.copy(keyframes = updated, hasKeyframe = true)
-                    } else clip
-                },
+                clips = if (!isImageTarget) {
+                    state.clips.map { clip ->
+                        if (clip.id == clipId) {
+                            val updated = (clip.keyframes + keyframe).sortedBy { it.timeOffsetMs }
+                            clip.copy(keyframes = updated, hasKeyframe = true)
+                        } else clip
+                    }
+                } else state.clips,
+                imageOverlays = if (isImageTarget) {
+                    state.imageOverlays.map { img ->
+                        if (img.id == clipId) {
+                            val updated = (img.keyframes + keyframe).sortedBy { it.timeOffsetMs }
+                            img.copy(keyframes = updated, hasKeyframe = true)
+                        } else img
+                    }
+                } else state.imageOverlays,
                 statusMessage = "Added keyframe (${keyframe.curve.displayName})"
             )
         }
@@ -2238,13 +2978,24 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
     fun removeKeyframe(clipId: String, keyframeId: String) {
         saveSnapshot()
         _uiState.update { state ->
+            val isImageTarget = state.imageOverlays.any { it.id == clipId }
             state.copy(
-                clips = state.clips.map { clip ->
-                    if (clip.id == clipId) {
-                        val updated = clip.keyframes.filter { it.id != keyframeId }
-                        clip.copy(keyframes = updated, hasKeyframe = updated.isNotEmpty())
-                    } else clip
-                },
+                clips = if (!isImageTarget) {
+                    state.clips.map { clip ->
+                        if (clip.id == clipId) {
+                            val updated = clip.keyframes.filter { it.id != keyframeId }
+                            clip.copy(keyframes = updated, hasKeyframe = updated.isNotEmpty())
+                        } else clip
+                    }
+                } else state.clips,
+                imageOverlays = if (isImageTarget) {
+                    state.imageOverlays.map { img ->
+                        if (img.id == clipId) {
+                            val updated = img.keyframes.filter { it.id != keyframeId }
+                            img.copy(keyframes = updated, hasKeyframe = updated.isNotEmpty())
+                        } else img
+                    }
+                } else state.imageOverlays,
                 statusMessage = "Removed keyframe"
             )
         }
@@ -2252,38 +3003,29 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun applyKeyframePreset(clipId: String, presetName: String) {
-        val clip = _uiState.value.clips.find { it.id == clipId } ?: return
-        saveSnapshot()
-        val dur = clip.trimmedDurationMs
-        val kfs = when (presetName) {
-            "KEN_BURNS_ZOOM" -> listOf(
-                OpenShotKeyframe(timeOffsetMs = 0L, scale = 1.0f, curve = KeyframeCurve.BEZIER),
-                OpenShotKeyframe(timeOffsetMs = dur, scale = 1.35f, curve = KeyframeCurve.BEZIER)
-            )
-            "PAN_LEFT_RIGHT" -> listOf(
-                OpenShotKeyframe(timeOffsetMs = 0L, positionX = -0.15f, curve = KeyframeCurve.BEZIER),
-                OpenShotKeyframe(timeOffsetMs = dur, positionX = 0.15f, curve = KeyframeCurve.BEZIER)
-            )
-            "FADE_DISSOLVE" -> listOf(
-                OpenShotKeyframe(timeOffsetMs = 0L, alpha = 0.0f, curve = KeyframeCurve.LINEAR),
-                OpenShotKeyframe(timeOffsetMs = 800L, alpha = 1.0f, curve = KeyframeCurve.LINEAR),
-                OpenShotKeyframe(timeOffsetMs = (dur - 800L).coerceAtLeast(1000L), alpha = 1.0f, curve = KeyframeCurve.LINEAR),
-                OpenShotKeyframe(timeOffsetMs = dur, alpha = 0.0f, curve = KeyframeCurve.LINEAR)
-            )
-            "SPIN_360" -> listOf(
-                OpenShotKeyframe(timeOffsetMs = 0L, rotation = 0f, scale = 0.8f, curve = KeyframeCurve.BEZIER),
-                OpenShotKeyframe(timeOffsetMs = dur / 2, rotation = 180f, scale = 1.15f, curve = KeyframeCurve.BEZIER),
-                OpenShotKeyframe(timeOffsetMs = dur, rotation = 360f, scale = 1.0f, curve = KeyframeCurve.BEZIER)
-            )
-            else -> listOf(
-                OpenShotKeyframe(timeOffsetMs = 0L, scale = 1.0f),
-                OpenShotKeyframe(timeOffsetMs = dur, scale = 1.25f)
-            )
-        }
+        val clip = _uiState.value.clips.find { it.id == clipId }
+        val img = _uiState.value.imageOverlays.find { it.id == clipId }
+        val targetDuration = clip?.trimmedDurationMs ?: img?.durationMs ?: return
+        saveSnapshot("KEYFRAME_PRESET", presetName)
+        val rawKfs = KeyframeEngine.createPresetKeyframes(presetName, targetDuration)
+        val normalizedKfs = if (img != null) {
+            rawKfs.map { kf ->
+                kf.copy(
+                    scale = (kf.scale * (img.scale / 1.0f).coerceIn(0.35f, 1.5f)).coerceIn(0.2f, 3.0f),
+                    positionX = img.positionX,
+                    positionY = img.positionY
+                )
+            }
+        } else rawKfs
         _uiState.update { state ->
             state.copy(
-                clips = state.clips.map { if (it.id == clipId) it.copy(keyframes = kfs, hasKeyframe = true) else it },
-                statusMessage = "Applied OpenShot animation curve: $presetName"
+                clips = if (clip != null) {
+                    state.clips.map { if (it.id == clipId) it.copy(keyframes = normalizedKfs, hasKeyframe = true) else it }
+                } else state.clips,
+                imageOverlays = if (img != null) {
+                    state.imageOverlays.map { if (it.id == clipId) it.copy(keyframes = normalizedKfs, hasKeyframe = true) else it }
+                } else state.imageOverlays,
+                statusMessage = "Applied keyframe animation curve: $presetName"
             )
         }
         autoSaveToRoom()
@@ -2292,14 +3034,26 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
     fun updateKeyframe(clipId: String, keyframe: OpenShotKeyframe) {
         saveSnapshot()
         _uiState.update { state ->
+            val isImageTarget = state.imageOverlays.any { it.id == clipId }
             state.copy(
-                clips = state.clips.map { clip ->
-                    if (clip.id == clipId) {
-                        val updated = clip.keyframes.map { if (it.id == keyframe.id) keyframe else it }
-                            .sortedBy { it.timeOffsetMs }
-                        clip.copy(keyframes = updated, hasKeyframe = true)
-                    } else clip
-                },
+                clips = if (!isImageTarget) {
+                    state.clips.map { clip ->
+                        if (clip.id == clipId) {
+                            val updated = clip.keyframes.map { if (it.id == keyframe.id) keyframe else it }
+                                .sortedBy { it.timeOffsetMs }
+                            clip.copy(keyframes = updated, hasKeyframe = true)
+                        } else clip
+                    }
+                } else state.clips,
+                imageOverlays = if (isImageTarget) {
+                    state.imageOverlays.map { img ->
+                        if (img.id == clipId) {
+                            val updated = img.keyframes.map { if (it.id == keyframe.id) keyframe else it }
+                                .sortedBy { it.timeOffsetMs }
+                            img.copy(keyframes = updated, hasKeyframe = true)
+                        } else img
+                    }
+                } else state.imageOverlays,
                 statusMessage = "Updated keyframe at ${String.format("%.2f", keyframe.timeOffsetMs / 1000f)}s"
             )
         }
@@ -2311,44 +3065,78 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
         scale: Float? = null,
         opacity: Float? = null,
         rotation: Float? = null,
-        curve: KeyframeCurve? = null
+        curve: KeyframeCurve? = null,
+        positionX: Float? = null,
+        positionY: Float? = null
     ) {
-        val clip = _uiState.value.clips.find { it.id == clipId } ?: return
-        val clipDuration = clip.trimmedDurationMs.coerceAtLeast(100L)
-        val elapsedInClip = (_uiState.value.currentPositionMs - clip.timelineStartMs).coerceIn(0L, clipDuration)
-
-        val existing = clip.keyframes.find { kotlin.math.abs(it.timeOffsetMs - elapsedInClip) <= 120L }
-        if (existing != null) {
-            val updated = existing.copy(
-                scale = scale ?: existing.scale,
-                alpha = opacity ?: existing.alpha,
-                rotation = rotation ?: existing.rotation,
-                curve = curve ?: existing.curve
-            )
-            updateKeyframe(clipId, updated)
-        } else {
-            val newKf = OpenShotKeyframe(
-                id = UUID.randomUUID().toString(),
+        val clip = _uiState.value.clips.find { it.id == clipId }
+        if (clip != null) {
+            val clipDuration = clip.trimmedDurationMs.coerceAtLeast(100L)
+            val elapsedInClip = (_uiState.value.currentPositionMs - clip.timelineStartMs).coerceIn(0L, clipDuration)
+            saveSnapshot("KEYFRAME_UPDATE", "Updated keyframe at ${elapsedInClip}ms")
+            val (updatedClip, savedKf) = KeyframeEngine.upsertKeyframeAtOffset(
+                clip = clip,
                 timeOffsetMs = elapsedInClip,
-                scale = scale ?: clip.scale,
-                alpha = opacity ?: clip.alpha,
-                rotation = rotation ?: clip.rotation,
-                curve = curve ?: KeyframeCurve.BEZIER
+                scale = scale,
+                alpha = opacity,
+                rotation = rotation,
+                positionX = positionX,
+                positionY = positionY,
+                curve = curve
             )
-            addKeyframe(clipId, newKf)
+            _uiState.update { state ->
+                state.copy(
+                    clips = state.clips.map { if (it.id == clipId) updatedClip else it },
+                    statusMessage = "Keyframe saved at ${String.format("%.2f", savedKf.timeOffsetMs / 1000f)}s"
+                )
+            }
+            autoSaveToRoom()
+            return
         }
+
+        val img = _uiState.value.imageOverlays.find { it.id == clipId } ?: return
+        val imgDuration = img.durationMs.coerceAtLeast(100L)
+        val elapsedInImg = (_uiState.value.currentPositionMs - img.timelineStartMs).coerceIn(0L, imgDuration)
+        saveSnapshot("KEYFRAME_UPDATE", "Updated image keyframe at ${elapsedInImg}ms")
+        val (updatedImg, savedKf) = KeyframeEngine.upsertKeyframeAtOffset(
+            overlay = img,
+            timeOffsetMs = elapsedInImg,
+            scale = scale,
+            alpha = opacity,
+            rotation = rotation,
+            positionX = positionX,
+            positionY = positionY,
+            curve = curve
+        )
+        _uiState.update { state ->
+            state.copy(
+                imageOverlays = state.imageOverlays.map { if (it.id == clipId) updatedImg else it },
+                statusMessage = "Image keyframe saved at ${String.format("%.2f", savedKf.timeOffsetMs / 1000f)}s"
+            )
+        }
+        autoSaveToRoom()
     }
 
     fun setClipKeyframes(clipId: String, keyframes: List<OpenShotKeyframe>) {
         saveSnapshot()
         val sorted = keyframes.sortedBy { it.timeOffsetMs }
         _uiState.update { state ->
+            val isImageTarget = state.imageOverlays.any { it.id == clipId }
             state.copy(
-                clips = state.clips.map { clip ->
-                    if (clip.id == clipId) {
-                        clip.copy(keyframes = sorted, hasKeyframe = sorted.isNotEmpty())
-                    } else clip
-                },
+                clips = if (!isImageTarget) {
+                    state.clips.map { clip ->
+                        if (clip.id == clipId) {
+                            clip.copy(keyframes = sorted, hasKeyframe = sorted.isNotEmpty())
+                        } else clip
+                    }
+                } else state.clips,
+                imageOverlays = if (isImageTarget) {
+                    state.imageOverlays.map { img ->
+                        if (img.id == clipId) {
+                            img.copy(keyframes = sorted, hasKeyframe = sorted.isNotEmpty())
+                        } else img
+                    }
+                } else state.imageOverlays,
                 statusMessage = "Updated keyframes (${sorted.size} points)"
             )
         }
@@ -2358,12 +3146,22 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
     fun clearAllKeyframes(clipId: String) {
         saveSnapshot()
         _uiState.update { state ->
+            val isImageTarget = state.imageOverlays.any { it.id == clipId }
             state.copy(
-                clips = state.clips.map { clip ->
-                    if (clip.id == clipId) {
-                        clip.copy(keyframes = emptyList(), hasKeyframe = false)
-                    } else clip
-                },
+                clips = if (!isImageTarget) {
+                    state.clips.map { clip ->
+                        if (clip.id == clipId) {
+                            clip.copy(keyframes = emptyList(), hasKeyframe = false)
+                        } else clip
+                    }
+                } else state.clips,
+                imageOverlays = if (isImageTarget) {
+                    state.imageOverlays.map { img ->
+                        if (img.id == clipId) {
+                            img.copy(keyframes = emptyList(), hasKeyframe = false)
+                        } else img
+                    }
+                } else state.imageOverlays,
                 statusMessage = "Cleared all keyframes"
             )
         }
@@ -2626,15 +3424,146 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
         autoSaveToRoom()
     }
 
-    fun startRealtimeExport(resolution: ExportResolution, fps: Int) {
+    fun setExportSettings(
+        resolution: ExportResolution = _uiState.value.exportResolution,
+        fps: Int = _uiState.value.exportFps,
+        bitrate: ExportBitrate = _uiState.value.exportBitrate,
+        codec: ExportVideoCodec = _uiState.value.exportCodec,
+        clearActivePreset: Boolean = true
+    ) {
+        _uiState.update { state ->
+            state.copy(
+                exportResolution = resolution,
+                exportFps = fps,
+                exportBitrate = bitrate,
+                exportCodec = codec,
+                activeExportPresetId = if (clearActivePreset) null else state.activeExportPresetId,
+                exportData = state.exportData.copy(
+                    resolution = resolution,
+                    fps = fps,
+                    bitrateMbps = bitrate.mbps
+                )
+            )
+        }
+    }
+
+    fun applyExportPreset(preset: ExportPresetEntity) {
+        _uiState.update { state ->
+            state.copy(
+                aspectRatio = preset.aspectRatio,
+                exportResolution = preset.resolution,
+                exportFps = preset.fps,
+                exportBitrate = preset.bitrate,
+                exportCodec = preset.videoCodec,
+                activeExportPresetId = preset.id,
+                exportData = state.exportData.copy(
+                    resolution = preset.resolution,
+                    fps = preset.fps,
+                    bitrateMbps = preset.bitrate.mbps
+                ),
+                statusMessage = "Applied preset '${preset.name}' (${preset.platform.displayName})"
+            )
+        }
+        autoSaveToRoom()
+    }
+
+    suspend fun saveCustomExportPresetSync(
+        name: String,
+        platform: SocialPlatform,
+        aspectRatio: AspectRatio,
+        resolution: ExportResolution,
+        fps: Int,
+        bitrate: ExportBitrate,
+        codec: ExportVideoCodec = ExportVideoCodec.H264,
+        notes: String = "",
+        existingId: String? = null
+    ): ExportPresetEntity {
+        val entity = exportPresetManager.saveCustomProfile(
+            name = name,
+            platform = platform,
+            aspectRatio = aspectRatio,
+            resolution = resolution,
+            fps = fps,
+            bitrate = bitrate,
+            codec = codec,
+            notes = notes,
+            existingId = existingId
+        )
+        applyExportPreset(entity)
+        _uiState.update { it.copy(statusMessage = "Saved custom preset '${entity.name}' for ${platform.displayName}") }
+        return entity
+    }
+
+    fun saveCustomExportPreset(
+        name: String,
+        platform: SocialPlatform,
+        aspectRatio: AspectRatio,
+        resolution: ExportResolution,
+        fps: Int,
+        bitrate: ExportBitrate,
+        codec: ExportVideoCodec = ExportVideoCodec.H264,
+        notes: String = "",
+        existingId: String? = null
+    ) {
+        viewModelScope.launch {
+            saveCustomExportPresetSync(
+                name = name,
+                platform = platform,
+                aspectRatio = aspectRatio,
+                resolution = resolution,
+                fps = fps,
+                bitrate = bitrate,
+                codec = codec,
+                notes = notes,
+                existingId = existingId
+            )
+        }
+    }
+
+    suspend fun deleteCustomExportPresetSync(presetId: String) {
+        val deleted = exportPresetManager.deleteProfile(presetId, allowBuiltIn = false)
+        _uiState.update { state ->
+            state.copy(
+                activeExportPresetId = if (deleted && state.activeExportPresetId == presetId) null else state.activeExportPresetId,
+                statusMessage = if (deleted) "Deleted export preset" else "Built-in presets cannot be deleted"
+            )
+        }
+    }
+
+    fun deleteCustomExportPreset(presetId: String) {
+        viewModelScope.launch {
+            deleteCustomExportPresetSync(presetId)
+        }
+    }
+
+    fun startRealtimeExport(
+        resolution: ExportResolution,
+        fps: Int,
+        bitrate: ExportBitrate = _uiState.value.exportBitrate,
+        codec: ExportVideoCodec = _uiState.value.exportCodec
+    ) {
+        val stateSnap = _uiState.value
+        if (stateSnap.clips.isEmpty()) {
+            _uiState.update {
+                it.copy(
+                    statusMessage = "Add at least one video clip before exporting.",
+                    exportData = it.exportData.copy(
+                        stage = ExportStage.FAILED,
+                        errorMessage = "Timeline has no video clips to export."
+                    )
+                )
+            }
+            return
+        }
+
         exportJob?.cancel()
-        val durationMs = _uiState.value.totalDurationMs.coerceAtLeast(1000L)
+        val durationMs = stateSnap.totalDurationMs.coerceAtLeast(1000L)
         val durationSec = durationMs / 1000f
         val totalFrames = (durationSec * fps).toInt().coerceAtLeast(30)
-        val estimatedSizeMb = (durationSec * resolution.bitrateMbps) / 8f
-        val projectTitle = _uiState.value.currentProject?.title ?: "OpenCut_Project"
-        val cleanTitle = projectTitle.lowercase().replace(" ", "_").replace("[^a-z0-9_]".toRegex(), "")
-        val fileName = "${cleanTitle}_${resolution.width}p_${System.currentTimeMillis() % 10000}.mp4"
+        val estimatedSizeMb = (durationSec * bitrate.mbps) / 8f
+        val projectTitle = stateSnap.currentProject?.title ?: "OpenCut_Project"
+        val cleanTitle = projectTitle.lowercase().replace(" ", "_").replace("[^a-z0-9_]".toRegex(), "").ifBlank { "opencut" }
+        val fileName = "${cleanTitle}_${resolution.height}p_${System.currentTimeMillis() % 10000}.mp4"
 
         val initialData = ExportProgressData(
             isExporting = true,
@@ -2644,11 +3573,14 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
             currentFps = fps.toFloat(),
             stage = ExportStage.PREPROCESSING,
             elapsedSeconds = 0L,
-            estimatedSecondsRemaining = (totalFrames / fps).toLong(),
+            estimatedSecondsRemaining = (durationSec).toLong(),
             resolution = resolution,
             fps = fps,
+            bitrateMbps = bitrate.mbps,
             estimatedSizeMb = estimatedSizeMb,
             outputFileName = fileName,
+            outputFilePath = "",
+            errorMessage = null,
             completed = false,
             isCancelled = false
         )
@@ -2657,70 +3589,85 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
             it.copy(
                 isExporting = true,
                 exportCompleted = false,
+                exportResolution = resolution,
+                exportFps = fps,
+                exportBitrate = bitrate,
+                exportCodec = codec,
                 exportData = initialData,
-                statusMessage = "Starting real-time render..."
+                statusMessage = "Starting Media3 ${codec.shortLabel} MP4 export..."
             )
         }
+        autoSaveToRoom()
 
         exportJob = viewModelScope.launch {
             val startTime = System.currentTimeMillis()
-            var currentFrameCount = 0
+            val result = Media3VideoExporter.exportTimelineToMp4(
+                context = getApplication(),
+                clips = stateSnap.clips,
+                audioClips = stateSnap.audioClips,
+                textOverlays = stateSnap.textOverlays,
+                imageOverlays = stateSnap.imageOverlays,
+                aspectRatio = stateSnap.aspectRatio,
+                resolution = resolution,
+                fps = fps,
+                bitrateMbps = bitrate.mbps,
+                outputFileName = fileName,
+                isVideoTrackMuted = stateSnap.isVideoTrackMuted,
+                isAudioTrackMuted = stateSnap.isAudioTrackMuted,
+                isAutoDuckingMasterEnabled = stateSnap.isAutoDuckingMasterEnabled,
+                autoDuckingLevel = stateSnap.autoDuckingDuckLevel,
+                videoCodec = codec,
+                onProgress = { progress ->
+                    val clamped = progress.coerceIn(0f, 1f)
+                    val elapsedSec = ((System.currentTimeMillis() - startTime) / 1000L).coerceAtLeast(1L)
+                    val frameCount = (clamped * totalFrames).toInt().coerceIn(0, totalFrames)
+                    val stage = when {
+                        clamped < 0.15f -> ExportStage.PREPROCESSING
+                        clamped < 0.40f -> ExportStage.RENDERING_TRANSITIONS
+                        clamped < 0.65f -> ExportStage.APPLYING_FILTERS
+                        clamped < 0.85f -> ExportStage.MIXING_AUDIO
+                        clamped < 1.0f -> ExportStage.ENCODING_CONTAINER
+                        else -> ExportStage.COMPLETED
+                    }
+                    val etaSeconds = if (clamped > 0.05f) {
+                        ((elapsedSec / clamped) * (1f - clamped)).toLong().coerceAtLeast(0L)
+                    } else (durationSec).toLong()
 
-            while (currentFrameCount < totalFrames && _uiState.value.exportData.isExporting) {
-                delay(40) // ~25-30 fps render cycle
-                currentFrameCount = (currentFrameCount + 1).coerceAtMost(totalFrames)
-
-                val progress = currentFrameCount.toFloat() / totalFrames
-                val elapsedMs = System.currentTimeMillis() - startTime
-                val elapsedSec = (elapsedMs / 1000L).coerceAtLeast(0L)
-
-                // Current stage based on progress bracket
-                val stage = when {
-                    progress < 0.15f -> ExportStage.PREPROCESSING
-                    progress < 0.40f -> ExportStage.RENDERING_TRANSITIONS
-                    progress < 0.65f -> ExportStage.APPLYING_FILTERS
-                    progress < 0.85f -> ExportStage.MIXING_AUDIO
-                    progress < 1.0f -> ExportStage.ENCODING_CONTAINER
-                    else -> ExportStage.COMPLETED
+                    val updatedProgress = _uiState.value.exportData.copy(
+                        progress = clamped,
+                        currentFrame = frameCount,
+                        currentFps = (frameCount / elapsedSec.toFloat()).coerceAtLeast(1f),
+                        stage = stage,
+                        elapsedSeconds = elapsedSec,
+                        estimatedSecondsRemaining = etaSeconds
+                    )
+                    _uiState.update { it.copy(exportProgress = clamped, exportData = updatedProgress) }
                 }
+            )
 
-                // Calculate real-time speed in frames per second
-                val actualFps = if (elapsedSec > 0) (currentFrameCount / elapsedSec.toFloat()) else fps.toFloat()
-                // Dynamic ETA Countdown in seconds
-                val remainingFrames = totalFrames - currentFrameCount
-                val etaSeconds = if (actualFps > 0) (remainingFrames / actualFps).toLong() else 0L
-
-                val currentProgressData = _uiState.value.exportData.copy(
-                    progress = progress,
-                    currentFrame = currentFrameCount,
-                    currentFps = actualFps,
-                    stage = stage,
-                    elapsedSeconds = elapsedSec,
-                    estimatedSecondsRemaining = etaSeconds
-                )
-
-                _uiState.update { it.copy(exportProgress = progress, exportData = currentProgressData) }
-            }
-
-            // Export Finished Successfully!
-            if (!_uiState.value.exportData.isCancelled) {
+            result.onSuccess { outcome ->
+                val elapsedSec = ((System.currentTimeMillis() - startTime) / 1000L).coerceAtLeast(1L)
                 val newRenderedItem = RenderedVideoItem(
                     id = UUID.randomUUID().toString(),
                     title = projectTitle,
                     fileName = fileName,
                     resolution = resolution.label,
                     fps = fps,
-                    durationMs = durationMs,
-                    fileSizeBytes = (estimatedSizeMb * 1024 * 1024).toLong(),
+                    durationMs = outcome.durationMs,
+                    fileSizeBytes = outcome.fileSizeBytes,
                     createdAt = System.currentTimeMillis(),
-                    localUri = "file:///storage/emulated/0/Movies/OpenCut/$fileName"
+                    localUri = outcome.mediaStoreUri ?: outcome.outputFile.absolutePath
                 )
 
                 val completedData = _uiState.value.exportData.copy(
                     progress = 1.0f,
                     currentFrame = totalFrames,
                     stage = ExportStage.COMPLETED,
+                    elapsedSeconds = elapsedSec,
                     estimatedSecondsRemaining = 0L,
+                    outputFileName = fileName,
+                    outputFilePath = outcome.outputFile.absolutePath,
+                    errorMessage = null,
                     completed = true,
                     isExporting = false
                 )
@@ -2731,15 +3678,50 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
                         exportCompleted = true,
                         exportData = completedData,
                         renderedVideos = listOf(newRenderedItem) + it.renderedVideos,
-                        statusMessage = "Export complete! Saved to phone internal storage."
+                        statusMessage = "Export complete! MP4 saved (${outcome.fileSizeBytes / 1024} KB)"
+                    )
+                }
+                refreshDiskArchivesAndStorage()
+            }.onFailure { err ->
+                if (err is CancellationException) return@onFailure
+                val msg = err.message ?: "MP4 export failed"
+                _uiState.update {
+                    it.copy(
+                        isExporting = false,
+                        exportCompleted = false,
+                        exportData = it.exportData.copy(
+                            isExporting = false,
+                            completed = false,
+                            stage = ExportStage.FAILED,
+                            errorMessage = msg
+                        ),
+                        statusMessage = "Export failed: $msg"
                     )
                 }
             }
         }
     }
 
+    fun exportToSafDestination(destinationUri: Uri) {
+        val outputPath = _uiState.value.exportData.outputFilePath
+        if (outputPath.isBlank()) {
+            _uiState.update { it.copy(statusMessage = "No completed MP4 export file available to save.") }
+            return
+        }
+        viewModelScope.launch {
+            val res = Media3VideoExporter.copyExportedFileToUri(getApplication(), outputPath, destinationUri)
+            res.onSuccess { bytes ->
+                _uiState.update { it.copy(statusMessage = "Saved MP4 copy (${bytes / 1024} KB) to selected folder!") }
+            }.onFailure { err ->
+                _uiState.update { it.copy(statusMessage = "Save failed: ${err.message ?: "Unknown error"}") }
+            }
+        }
+    }
+
     fun cancelExport() {
+        Media3VideoExporter.cancelActiveExport()
         exportJob?.cancel()
+        exportJob = null
         _uiState.update {
             it.copy(
                 isExporting = false,
@@ -2755,10 +3737,170 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun deleteRenderedVideo(id: String) {
+        val target = _uiState.value.renderedVideos.find { it.id == id }
+        if (target != null && !target.localUri.startsWith("content://")) {
+            runCatching { File(target.localUri.removePrefix("file://")).delete() }
+        }
         _uiState.update { state ->
             state.copy(
                 renderedVideos = state.renderedVideos.filter { it.id != id },
-                statusMessage = "Removed exported video from phone storage"
+                statusMessage = "Deleted exported video"
+            )
+        }
+        refreshDiskArchivesAndStorage()
+    }
+
+    fun clearTempCacheBuffers(onCompleted: (Long) -> Unit = {}) {
+        viewModelScope.launch {
+            val freed = runCatching { StudioExportUtilities.clearTempBuffers(getApplication()) }.getOrDefault(0L)
+            refreshDiskArchivesAndStorage()
+            val formatted = com.example.util.AppStorageBreakdown.formatBytes(freed)
+            _uiState.update { it.copy(statusMessage = "Cleared temp buffers ($formatted freed)") }
+            onCompleted(freed)
+        }
+    }
+
+    fun createBoomerangLoopOnTimeline() {
+        val state = _uiState.value
+        val sourceClip = state.selectedClip ?: state.clips.firstOrNull()
+        if (sourceClip == null) {
+            _uiState.update { it.copy(statusMessage = "Add a video clip first to create a Boomerang loop.") }
+            return
+        }
+        saveSnapshot("BOOMERANG_LOOP", "Created Boomerang loop from ${sourceClip.name}")
+        val idx = state.clips.indexOfFirst { it.id == sourceClip.id }.coerceAtLeast(0)
+        val forwardClip = sourceClip.copy(speed = 1.5f)
+        val reverseLoopClip = sourceClip.copy(
+            id = UUID.randomUUID().toString(),
+            name = "${sourceClip.name} (Boomerang Rev)",
+            isReversed = !sourceClip.isReversed,
+            speed = 1.5f,
+            transitionIn = TransitionType.CROSSFADE,
+            transitionDurationMs = 250L
+        )
+        val updated = state.clips.toMutableList()
+        updated[idx] = forwardClip
+        updated.add(idx + 1, reverseLoopClip)
+        val aligned = recalculateClipOffsets(updated)
+        _uiState.update {
+            it.copy(
+                clips = aligned,
+                selectedClipId = reverseLoopClip.id,
+                statusMessage = "Created seamless 1.5x Boomerang loop on timeline!"
+            )
+        }
+        autoSaveToRoom()
+    }
+
+    fun extractProjectAudioToM4a(onComplete: (Result<File>) -> Unit) {
+        val stateSnap = _uiState.value
+        if (stateSnap.clips.isEmpty()) {
+            val err = IllegalStateException("Add a video clip before extracting audio.")
+            _uiState.update { it.copy(statusMessage = err.message) }
+            onComplete(Result.failure(err))
+            return
+        }
+        _uiState.update { it.copy(isExtractingAudio = true, statusMessage = "Extracting AAC audio track (.m4a)...") }
+        viewModelScope.launch {
+            val baseName = (stateSnap.currentProject?.title ?: "opencut_audio")
+                .lowercase()
+                .replace("[^a-z0-9_]".toRegex(), "_")
+            val fileName = "${baseName}_audio_${System.currentTimeMillis() % 10000}.m4a"
+            val result = Media3VideoExporter.extractAudioToM4a(
+                context = getApplication(),
+                clips = stateSnap.clips,
+                outputFileName = fileName
+            )
+            result.onSuccess { file ->
+                _uiState.update {
+                    it.copy(
+                        isExtractingAudio = false,
+                        statusMessage = "Extracted audio: ${file.name} (${file.length() / 1024} KB)"
+                    )
+                }
+                refreshDiskArchivesAndStorage()
+            }.onFailure { err ->
+                _uiState.update {
+                    it.copy(
+                        isExtractingAudio = false,
+                        statusMessage = err.message ?: "Audio extraction failed"
+                    )
+                }
+            }
+            onComplete(result)
+        }
+    }
+
+    fun cycleCompositionGuideMode() {
+        val nextMode = _uiState.value.compositionGuideMode.next()
+        setCompositionGuideMode(nextMode)
+    }
+
+    fun setCompositionGuideMode(mode: com.example.data.model.CompositionGuideMode) {
+        _uiState.update {
+            it.copy(
+                compositionGuideMode = mode,
+                statusMessage = "Preview Guide: ${mode.label}"
+            )
+        }
+    }
+
+    fun captureCurrentFrameToPng(onResult: (Result<File>) -> Unit = {}) {
+        val stateSnap = _uiState.value
+        val activeClip = stateSnap.activeClipAtPlayhead ?: stateSnap.clips.firstOrNull()
+        if (activeClip == null) {
+            val err = IllegalStateException("Add a video clip before capturing a still frame.")
+            _uiState.update { it.copy(statusMessage = err.message) }
+            onResult(Result.failure(err))
+            return
+        }
+        _uiState.update { it.copy(isCapturingFrame = true, statusMessage = "Capturing HD frame at ${formatTime(stateSnap.currentPositionMs)}...") }
+        viewModelScope.launch {
+            val res = StudioExportUtilities.captureClipFrameToPng(
+                context = getApplication(),
+                clip = activeClip,
+                timelinePositionMs = stateSnap.currentPositionMs,
+                aspectRatio = stateSnap.aspectRatio
+            )
+            res.onSuccess { file ->
+                _uiState.update {
+                    it.copy(
+                        isCapturingFrame = false,
+                        capturedFrameFilePath = file.absolutePath,
+                        statusMessage = "Captured HD frame: ${file.name}"
+                    )
+                }
+                refreshDiskArchivesAndStorage()
+            }.onFailure { err ->
+                _uiState.update {
+                    it.copy(
+                        isCapturingFrame = false,
+                        statusMessage = err.message ?: "Frame capture failed"
+                    )
+                }
+            }
+            onResult(res)
+        }
+    }
+
+    fun dismissCapturedFrame() {
+        _uiState.update { it.copy(capturedFrameFilePath = null) }
+    }
+
+    fun insertCapturedFrameAsImageOverlay(file: File) {
+        if (!file.exists()) {
+            _uiState.update { it.copy(statusMessage = "Captured frame file not found.") }
+            return
+        }
+        addImageOverlayFromUri(
+            uriString = Uri.fromFile(file).toString(),
+            name = file.nameWithoutExtension,
+            durationMs = 3000L
+        )
+        _uiState.update {
+            it.copy(
+                capturedFrameFilePath = null,
+                statusMessage = "Added still frame as Image Overlay on timeline!"
             )
         }
     }
@@ -2781,29 +3923,143 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    private fun autoSaveToRoom() {
+    fun startPeriodicAutoSaveLoop(intervalMs: Long = AUTO_SAVE_INTERVAL_MS) {
+        autoSaveJob?.cancel()
+        val safeInterval = intervalMs.coerceAtLeast(250L)
+        autoSaveJob = viewModelScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                delay(safeInterval)
+                val state = _uiState.value
+                if (state.isAutoSaveEnabled && state.currentProject != null) {
+                    performAutoSaveSync(force = false)
+                }
+            }
+        }
+    }
+
+    fun stopPeriodicAutoSaveLoop() {
+        autoSaveJob?.cancel()
+        autoSaveJob = null
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        stopPeriodicAutoSaveLoop()
+        playbackJob?.cancel()
+        exportJob?.cancel()
+        importJob?.cancel()
+    }
+
+    fun setAutoSaveEnabled(enabled: Boolean) {
+        _uiState.update {
+            it.copy(
+                isAutoSaveEnabled = enabled,
+                statusMessage = if (enabled) "Auto-save enabled (syncs every 4s)" else "Auto-save paused"
+            )
+        }
+        if (enabled) {
+            startPeriodicAutoSaveLoop()
+            flushAutoSave()
+        } else {
+            stopPeriodicAutoSaveLoop()
+        }
+    }
+
+    fun flushAutoSave() {
+        if (_uiState.value.currentProject == null) return
+        viewModelScope.launch(Dispatchers.IO) {
+            performAutoSaveSync(force = false)
+        }
+    }
+
+    fun triggerManualAutoSave() {
         val currentProj = _uiState.value.currentProject ?: return
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
+            val saved = performAutoSaveSync(force = true)
+            if (saved) {
+                _uiState.update {
+                    it.copy(statusMessage = "Saved '${currentProj.title}' timeline to Room")
+                }
+            }
+        }
+    }
+
+    private fun buildAutoSaveSignature(state: EditorUiState): String {
+        val serializedTimeline = TimelineSerializer.serialize(
+            TimelineData(
+                clips = state.clips,
+                audioClips = state.audioClips,
+                textOverlays = state.textOverlays,
+                stickers = state.stickers,
+                shapes = state.shapes,
+                imageOverlays = state.imageOverlays
+            )
+        )
+        return buildString {
+            append(state.currentProject?.id.orEmpty()).append('|')
+            append(state.aspectRatio.name).append('|')
+            append(state.exportData.resolution.name).append('|')
+            append(state.exportData.fps).append('|')
+            append(state.exportBitrate.mbps).append('|')
+            append(state.currentPositionMs).append('|')
+            append(state.currentWorkspace.name).append('|')
+            append(state.isVideoTrackMuted).append('|')
+            append(state.isVideoTrackLocked).append('|')
+            append(state.isAudioTrackMuted).append('|')
+            append(state.isAudioTrackLocked).append('|')
+            append(state.isTextTrackVisible).append('|')
+            append(state.isTextTrackLocked).append('|')
+            append(state.isStickerTrackVisible).append('|')
+            append(state.isStickerTrackLocked).append('|')
+            append(state.isShapeTrackVisible).append('|')
+            append(state.isShapeTrackLocked).append('|')
+            append(serializedTimeline)
+        }
+    }
+
+    private fun autoSaveToRoom() {
+        if (_uiState.value.currentProject == null) return
+        viewModelScope.launch(Dispatchers.IO) {
+            performAutoSaveSync(force = false)
+        }
+    }
+
+    suspend fun performAutoSaveSync(force: Boolean = false): Boolean = withContext(Dispatchers.IO) {
+        autoSaveMutex.withLock {
+            val state = _uiState.value
+            val currentProj = state.currentProject ?: return@withLock false
+
             val timelineData = TimelineData(
-                clips = _uiState.value.clips,
-                audioClips = _uiState.value.audioClips,
-                textOverlays = _uiState.value.textOverlays,
-                stickers = _uiState.value.stickers,
-                shapes = _uiState.value.shapes
+                clips = state.clips,
+                audioClips = state.audioClips,
+                textOverlays = state.textOverlays,
+                stickers = state.stickers,
+                shapes = state.shapes,
+                imageOverlays = state.imageOverlays
             )
             val serialized = TimelineSerializer.serialize(timelineData)
+            val signature = buildAutoSaveSignature(state)
+            if (!force && signature == lastSavedTimelineSignature) {
+                return@withLock false
+            }
+
+            _uiState.update { it.copy(isAutoSaving = true) }
+            try {
+            val savedAt = System.currentTimeMillis()
             val updatedEntity = currentProj.copy(
-                aspectRatioName = _uiState.value.aspectRatio.name,
-                durationMs = _uiState.value.totalDurationMs,
-                clipCount = _uiState.value.clips.size,
-                updatedAt = System.currentTimeMillis(),
-                lastPlayheadPositionMs = _uiState.value.currentPositionMs,
-                currentWorkspace = _uiState.value.currentWorkspace.name,
+                aspectRatioName = state.aspectRatio.name,
+                resolutionName = state.exportData.resolution.name,
+                fps = state.exportData.fps,
+                bitrateMbps = state.exportBitrate.mbps,
+                durationMs = state.totalDurationMs,
+                clipCount = state.clips.size,
+                updatedAt = savedAt,
+                lastPlayheadPositionMs = state.currentPositionMs,
+                currentWorkspace = state.currentWorkspace.name,
                 timelineDataJson = serialized
             )
             repository.saveProject(updatedEntity)
 
-            // Extract and sync layer metadata
             val layers = listOf(
                 com.example.data.db.ProjectLayerEntity(
                     layerId = "${currentProj.id}-layer-video",
@@ -2812,9 +4068,9 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
                     layerType = "VIDEO",
                     layerName = "Main Video Track",
                     isVisible = true,
-                    isLocked = _uiState.value.isVideoTrackLocked,
-                    isMuted = _uiState.value.isVideoTrackMuted,
-                    itemCount = _uiState.value.clips.size
+                    isLocked = state.isVideoTrackLocked,
+                    isMuted = state.isVideoTrackMuted,
+                    itemCount = state.clips.size
                 ),
                 com.example.data.db.ProjectLayerEntity(
                     layerId = "${currentProj.id}-layer-audio-vo",
@@ -2823,9 +4079,9 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
                     layerType = "AUDIO",
                     layerName = "Voiceover & Dialogue",
                     isVisible = true,
-                    isLocked = _uiState.value.isAudioTrackLocked,
-                    isMuted = _uiState.value.isAudioTrackMuted,
-                    itemCount = _uiState.value.audioClips.count { it.category == com.example.data.model.AudioCategory.VOICEOVER }
+                    isLocked = state.isAudioTrackLocked,
+                    isMuted = state.isAudioTrackMuted,
+                    itemCount = state.audioClips.count { it.category == com.example.data.model.AudioCategory.VOICEOVER }
                 ),
                 com.example.data.db.ProjectLayerEntity(
                     layerId = "${currentProj.id}-layer-audio-bgm",
@@ -2834,9 +4090,9 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
                     layerType = "AUDIO",
                     layerName = "Background Music",
                     isVisible = true,
-                    isLocked = _uiState.value.isAudioTrackLocked,
-                    isMuted = _uiState.value.isAudioTrackMuted,
-                    itemCount = _uiState.value.audioClips.count { it.category == com.example.data.model.AudioCategory.MUSIC }
+                    isLocked = state.isAudioTrackLocked,
+                    isMuted = state.isAudioTrackMuted,
+                    itemCount = state.audioClips.count { it.category == com.example.data.model.AudioCategory.MUSIC }
                 ),
                 com.example.data.db.ProjectLayerEntity(
                     layerId = "${currentProj.id}-layer-text",
@@ -2844,9 +4100,9 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
                     layerIndex = 3,
                     layerType = "TEXT",
                     layerName = "Subtitles & Text Overlays",
-                    isVisible = _uiState.value.isTextTrackVisible,
-                    isLocked = _uiState.value.isTextTrackLocked,
-                    itemCount = _uiState.value.textOverlays.size
+                    isVisible = state.isTextTrackVisible,
+                    isLocked = state.isTextTrackLocked,
+                    itemCount = state.textOverlays.size
                 ),
                 com.example.data.db.ProjectLayerEntity(
                     layerId = "${currentProj.id}-layer-stickers",
@@ -2854,9 +4110,9 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
                     layerIndex = 4,
                     layerType = "STICKER",
                     layerName = "Stickers & Graphic Badges",
-                    isVisible = _uiState.value.isStickerTrackVisible,
-                    isLocked = _uiState.value.isStickerTrackLocked,
-                    itemCount = _uiState.value.stickers.size
+                    isVisible = state.isStickerTrackVisible,
+                    isLocked = state.isStickerTrackLocked,
+                    itemCount = state.stickers.size
                 ),
                 com.example.data.db.ProjectLayerEntity(
                     layerId = "${currentProj.id}-layer-shapes",
@@ -2864,19 +4120,29 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
                     layerIndex = 5,
                     layerType = "SHAPE",
                     layerName = "Vector Shapes & Annotations",
-                    isVisible = _uiState.value.isShapeTrackVisible,
-                    isLocked = _uiState.value.isShapeTrackLocked,
-                    itemCount = _uiState.value.shapes.size
+                    isVisible = state.isShapeTrackVisible,
+                    isLocked = state.isShapeTrackLocked,
+                    itemCount = state.shapes.size
                 )
             )
             repository.saveProjectLayers(currentProj.id, layers)
 
+            lastSavedTimelineSignature = signature
             _uiState.update {
                 it.copy(
                     currentProject = updatedEntity,
-                    projectLayers = layers
+                    projectLayers = layers,
+                    isAutoSaving = false,
+                    lastAutoSavedAtMs = savedAt,
+                    autoSaveCount = it.autoSaveCount + 1
                 )
             }
+            true
+        } catch (t: Throwable) {
+            _uiState.update { it.copy(isAutoSaving = false) }
+            MediaDiagnostics.error("AUTO_SAVE", "Periodic Room auto-save failed", t.message ?: "", t)
+            false
+        }
         }
     }
 
@@ -2915,6 +4181,7 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
                     textOverlays = restored.textOverlays,
                     stickers = restored.stickers,
                     shapes = restored.shapes,
+                    imageOverlays = restored.imageOverlays,
                     currentPositionMs = step.playheadPositionMs.coerceIn(0L, it.totalDurationMs),
                     editHistory = updatedHistory,
                     statusMessage = "Restored checkpoint: ${step.actionDescription}",
@@ -3224,6 +4491,8 @@ class VideoEditorViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     companion object {
+        const val AUTO_SAVE_INTERVAL_MS = 4000L
+
         fun formatTime(ms: Long): String {
             val totalSeconds = ms / 1000
             val minutes = totalSeconds / 60

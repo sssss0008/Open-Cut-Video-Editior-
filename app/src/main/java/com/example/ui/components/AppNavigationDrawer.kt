@@ -67,12 +67,17 @@ import com.example.ui.theme.TrackTransitionColor
 fun AppNavigationDrawer(
     projectCount: Int,
     renderedVideoCount: Int,
+    storageUsageBytes: Long = 0L,
+    isSnappingEnabled: Boolean = true,
+    onToggleSnapping: (Boolean) -> Unit = {},
     onCloseDrawer: () -> Unit,
     onNavigateTab: (Int) -> Unit,
+    onOpenTransitions: () -> Unit = { onNavigateTab(1) },
+    onOpenColorStudio: () -> Unit = { onNavigateTab(1) },
     onClearCache: () -> Unit
 ) {
-    var snappingEnabled by remember { mutableStateOf(true) }
     var showCacheCleanedMessage by remember { mutableStateOf(false) }
+    var showGesturesDialog by remember { mutableStateOf(false) }
 
     ModalDrawerSheet(
         drawerContainerColor = StudioSurfaceDark,
@@ -103,7 +108,7 @@ fun AppNavigationDrawer(
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
                     Text("OpenCut Studio", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    Text("v3.0 Ultimate Pro • NLE & AI", color = Color.Gray, fontSize = 11.sp)
+                    Text("v4.0 Pro • Multi-Track NLE", color = Color.Gray, fontSize = 11.sp)
                 }
             }
 
@@ -122,7 +127,7 @@ fun AppNavigationDrawer(
                 ) {
                     Icon(Icons.Default.Lock, "Lock", tint = AccentEmerald, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("100% On-Device & Offline Storage", color = AccentEmerald, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text("On-Device Room Storage • Optional Sync", color = AccentEmerald, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
 
@@ -160,8 +165,14 @@ fun AppNavigationDrawer(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Estimated Device Usage:", color = Color.LightGray, fontSize = 12.sp)
-                        Text("${(projectCount * 2) + (renderedVideoCount * 18)} MB", color = AccentEmerald, fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                        Text("Actual App Disk Usage:", color = Color.LightGray, fontSize = 12.sp)
+                        Text(
+                            text = com.example.util.AppStorageBreakdown.formatBytes(storageUsageBytes),
+                            color = AccentEmerald,
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(10.dp))
@@ -178,7 +189,7 @@ fun AppNavigationDrawer(
                             .testTag("clear_cache_drawer_button")
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.Center
                         ) {
@@ -190,7 +201,7 @@ fun AppNavigationDrawer(
 
                     if (showCacheCleanedMessage) {
                         Text(
-                            text = "✓ Temp frame cache cleared!",
+                            text = "✓ Temp cache & thumbnails cleared",
                             color = AccentEmerald,
                             fontSize = 10.sp,
                             modifier = Modifier.padding(top = 4.dp)
@@ -208,10 +219,10 @@ fun AppNavigationDrawer(
             DrawerItem(
                 icon = Icons.Default.Transform,
                 title = "Transitions Library",
-                subtitle = "16 effects: Crossfade, wipes, slides, zoom, iris",
+                subtitle = "16 effects: Drag & drop onto clip seams",
                 accent = TrackTransitionColor,
                 onClick = {
-                    onNavigateTab(1) // Edit tab
+                    onOpenTransitions()
                     onCloseDrawer()
                 }
             )
@@ -219,18 +230,18 @@ fun AppNavigationDrawer(
             DrawerItem(
                 icon = Icons.Default.Palette,
                 title = "Cinematic Color LUTs",
-                subtitle = "12 aesthetic presets & contrast controls",
+                subtitle = "12 aesthetic presets & color wheels",
                 accent = AccentCyan,
                 onClick = {
-                    onNavigateTab(1)
+                    onOpenColorStudio()
                     onCloseDrawer()
                 }
             )
 
             DrawerItem(
                 icon = Icons.Default.Storage,
-                title = "Rendered Videos Archive",
-                subtitle = "Direct playback and gallery export",
+                title = "Export Studio & Presets",
+                subtitle = "Social presets, MP4 archive & utilities",
                 accent = AccentEmerald,
                 onClick = {
                     onNavigateTab(3) // Studio tab
@@ -253,21 +264,22 @@ fun AppNavigationDrawer(
             ) {
                 Column {
                     Text("Timeline Snapping", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    Text("Snap playhead to clip cuts", color = Color.Gray, fontSize = 10.sp)
+                    Text("Magnetic snap to cuts & markers", color = Color.Gray, fontSize = 10.sp)
                 }
                 Switch(
-                    checked = snappingEnabled,
-                    onCheckedChange = { snappingEnabled = it },
-                    colors = SwitchDefaults.colors(checkedThumbColor = AccentCyan, checkedTrackColor = Color(0xFF004D40))
+                    checked = isSnappingEnabled,
+                    onCheckedChange = { onToggleSnapping(it) },
+                    colors = SwitchDefaults.colors(checkedThumbColor = AccentCyan, checkedTrackColor = Color(0xFF004D40)),
+                    modifier = Modifier.testTag("drawer_snapping_switch")
                 )
             }
 
             DrawerItem(
                 icon = Icons.Default.TouchApp,
                 title = "Touch & Gestures Guide",
-                subtitle = "Pinch timeline to zoom • Double tap to play",
+                subtitle = "Pinch zoom • Drag seams • Keyframes",
                 accent = Color(0xFFFFB300),
-                onClick = {}
+                onClick = { showGesturesDialog = true }
             )
 
             Spacer(modifier = Modifier.height(18.dp))
@@ -278,14 +290,54 @@ fun AppNavigationDrawer(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Info, "About", tint = Color.Gray, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("100% On-Device Offline Editor", color = Color.Gray, fontSize = 10.sp)
+                Text("Hardware-Accelerated Media3 Engine", color = Color.Gray, fontSize = 10.sp)
             }
             Text(
-                text = "Zero tracking • No cloud dependencies • Private on your phone",
+                text = "Local Room auto-save • Optional Firebase cloud backup in Account",
                 color = Color.DarkGray,
                 fontSize = 9.sp,
                 modifier = Modifier.padding(top = 4.dp)
             )
+        }
+    }
+
+    if (showGesturesDialog) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showGesturesDialog = false }) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = StudioSurfaceDark,
+                border = androidx.compose.foundation.BorderStroke(1.dp, AccentCyan.copy(alpha = 0.6f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("gestures_guide_dialog")
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text("Touch & Editor Gestures", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    listOf(
+                        "Scrub Ruler" to "Drag along the timecode ruler for frame-accurate playhead scrubbing.",
+                        "Timeline Zoom" to "Use +/- zoom controls or pinch gesture to expand for frame cuts.",
+                        "Drag Transitions" to "Open Transition tool, then drag any card directly onto a clip seam.",
+                        "Trim Clip Handles" to "Select a video clip and drag its left/right trim bars to adjust in/out.",
+                        "Animate Keyframes" to "Select a video or image clip and tap Keyframe to animate scale, opacity & rotation."
+                    ).forEach { (title, desc) ->
+                        Column {
+                            Text(title, color = AccentCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(desc, color = Color.LightGray, fontSize = 11.sp)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    androidx.compose.material3.Button(
+                        onClick = { showGesturesDialog = false },
+                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Got It", color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
         }
     }
 }

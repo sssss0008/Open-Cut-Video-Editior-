@@ -67,6 +67,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -77,19 +78,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.zIndex
-import kotlin.math.roundToInt
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.zIndex
+import kotlin.math.roundToInt
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -97,7 +101,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.Image
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import com.example.data.model.AudioTrackItem
+import com.example.data.model.ImageOverlay
 import com.example.data.model.OverlaySticker
 import com.example.data.model.SampleVideo
 import com.example.data.model.ShapeOverlay
@@ -107,7 +117,11 @@ import com.example.data.model.TrackType
 import com.example.data.model.TransitionType
 import com.example.data.model.VideoClip
 import com.example.data.model.VisualSnapTarget
+import com.example.util.DeviceMediaImporter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.example.ui.theme.AccentCyan
+import com.example.ui.theme.AccentEmerald
 import com.example.ui.theme.AccentPink
 import com.example.ui.theme.PlayheadRed
 import com.example.ui.theme.StudioCardDark
@@ -132,6 +146,7 @@ fun MultiTrackTimeline(
     textOverlays: List<TextOverlay>,
     stickers: List<OverlaySticker>,
     shapes: List<ShapeOverlay> = emptyList(),
+    imageOverlays: List<ImageOverlay> = emptyList(),
     currentPositionMs: Long,
     totalDurationMs: Long,
     selectedClipId: String?,
@@ -139,6 +154,7 @@ fun MultiTrackTimeline(
     selectedTextId: String?,
     selectedStickerId: String?,
     selectedShapeId: String? = null,
+    selectedImageOverlayId: String? = null,
     timelineZoom: Float,
     onSeek: (Long) -> Unit,
     onSelectClip: (String) -> Unit,
@@ -146,6 +162,7 @@ fun MultiTrackTimeline(
     onSelectText: (String) -> Unit,
     onSelectSticker: (String) -> Unit,
     onSelectShape: (String) -> Unit = {},
+    onSelectImageOverlay: (String) -> Unit = {},
     onZoomChange: (Float) -> Unit,
     onAddMediaClick: () -> Unit,
     onSelectTransitionClick: (String) -> Unit = {},
@@ -154,8 +171,11 @@ fun MultiTrackTimeline(
     onReorderClips: (fromIndex: Int, toIndex: Int) -> Unit = { _, _ -> },
     onOpenPrecisionScrubber: () -> Unit = {},
     draggingTransition: TransitionType? = null,
+    hoveredDropClipId: String? = null,
     onDropTransition: (clipId: String, TransitionType) -> Unit = { _, _ -> },
     onCancelDragTransition: () -> Unit = {},
+    onReportTransitionSeamBounds: (clipId: String, Rect) -> Unit = { _, _ -> },
+    onClearTransitionSeamBounds: (clipId: String) -> Unit = {},
     timelineMarkers: List<TimelineCueMarker> = emptyList(),
     onAddCueMarker: () -> Unit = {},
     onDeleteCueMarker: (String) -> Unit = {},
@@ -643,6 +663,7 @@ fun MultiTrackTimeline(
                     isTextVisible = isTextTrackVisible,
                     isTextLocked = isTextTrackLocked,
                     hasShapes = shapes.isNotEmpty(),
+                    hasImages = imageOverlays.isNotEmpty(),
                     onToggleVisibility = onToggleTrackVisibility,
                     onToggleLock = onToggleTrackLock,
                     onAddCueMarker = onAddCueMarker,
@@ -727,7 +748,10 @@ fun MultiTrackTimeline(
                             onSelectTransitionClick = onSelectTransitionClick,
                             onReorderClips = onReorderClips,
                             draggingTransition = draggingTransition,
+                            hoveredDropClipId = hoveredDropClipId,
                             onDropTransition = onDropTransition,
+                            onReportTransitionSeamBounds = onReportTransitionSeamBounds,
+                            onClearTransitionSeamBounds = onClearTransitionSeamBounds,
                             onCheckSnap = checkSnap,
                             onClearSnap = { activeSnapTarget = null },
                             onUpdateTrim = onUpdateTrim,
@@ -786,6 +810,23 @@ fun MultiTrackTimeline(
                                 onSelectShape = {
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                     onSelectShape(it)
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
+
+                        // 5b. Photo / Image Overlays Lane
+                        if (imageOverlays.isNotEmpty()) {
+                            ImageOverlayTrackLane(
+                                imageOverlays = imageOverlays,
+                                selectedImageOverlayId = selectedImageOverlayId,
+                                msToDp = msToDp,
+                                onSelectImageOverlay = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onSelectImageOverlay(it)
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1260,7 +1301,10 @@ fun VideoTrackLane(
     onSelectTransitionClick: (String) -> Unit = {},
     onReorderClips: (fromIndex: Int, toIndex: Int) -> Unit = { _, _ -> },
     draggingTransition: TransitionType? = null,
+    hoveredDropClipId: String? = null,
     onDropTransition: (clipId: String, TransitionType) -> Unit = { _, _ -> },
+    onReportTransitionSeamBounds: (clipId: String, Rect) -> Unit = { _, _ -> },
+    onClearTransitionSeamBounds: (clipId: String) -> Unit = {},
     isLocked: Boolean = false,
     isMuted: Boolean = false,
     onCheckSnap: ((Long) -> Long)? = null,
@@ -1270,6 +1314,7 @@ fun VideoTrackLane(
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
+    val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     var draggingIndex by remember { mutableStateOf<Int?>(null) }
     var dragOffsetPx by remember { mutableFloatStateOf(0f) }
@@ -1292,16 +1337,29 @@ fun VideoTrackLane(
                 val clipWidth = msToDp(clip.trimmedDurationMs).coerceAtLeast(44.dp)
                 val isSelected = clip.id == selectedClipId
                 val isBeingDragged = draggingIndex == index
+                val isHoveredIntersection = hoveredDropClipId == clip.id
 
-                // Dedicated drop seam between clips when a transition is being dragged
+                DisposableEffect(clip.id) {
+                    onDispose {
+                        onClearTransitionSeamBounds(clip.id)
+                    }
+                }
+
+                // Dedicated drop seam at clip intersections when a transition is being dragged
                 if (draggingTransition != null) {
                     Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = Color(0xFF6B21A8),
-                        border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFFFF4081)),
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (isHoveredIntersection) AccentEmerald else Color(0xFF6B21A8),
+                        border = androidx.compose.foundation.BorderStroke(
+                            width = if (isHoveredIntersection) 2.5.dp else 1.5.dp,
+                            color = if (isHoveredIntersection) Color.White else Color(0xFFFF4081)
+                        ),
                         modifier = Modifier
-                            .width(26.dp)
-                            .fillMaxHeight(0.85f)
+                            .width(if (isHoveredIntersection) 34.dp else 26.dp)
+                            .fillMaxHeight(0.88f)
+                            .onGloballyPositioned { coords ->
+                                onReportTransitionSeamBounds(clip.id, coords.boundsInRoot())
+                            }
                             .clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 onDropTransition(clip.id, draggingTransition)
@@ -1312,8 +1370,18 @@ fun VideoTrackLane(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center
                         ) {
-                            Text("⧗", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            Text("Drop", color = Color.White, fontSize = 7.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = if (isHoveredIntersection) "⇣" else "⧗",
+                                color = if (isHoveredIntersection) Color.Black else Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = if (index == 0) "In" else "Drop",
+                                color = if (isHoveredIntersection) Color.Black else Color.White,
+                                fontSize = 7.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
@@ -1488,6 +1556,52 @@ fun VideoTrackLane(
                             }
                         }
                     } else {
+                        val isRealClip = !clip.uri.isNullOrBlank() && !clip.uri.startsWith("sample://")
+                        val filmstripFrames by produceState<List<android.graphics.Bitmap>>(
+                            initialValue = emptyList(),
+                            key1 = clip.uri,
+                            key2 = clip.trimInMs,
+                            key3 = clip.trimOutMs
+                        ) {
+                            if (isRealClip) {
+                                value = withContext(Dispatchers.IO) {
+                                    DeviceMediaImporter.extractTimelineThumbnails(
+                                        context = context,
+                                        fileOrUri = clip.uri,
+                                        trimInMs = clip.trimInMs,
+                                        trimOutMs = clip.trimOutMs,
+                                        count = 4
+                                    )
+                                }
+                            } else {
+                                value = emptyList()
+                            }
+                        }
+
+                        if (filmstripFrames.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(vertical = 8.dp)
+                            ) {
+                                filmstripFrames.forEach { bmp ->
+                                    Image(
+                                        bitmap = bmp.asImageBitmap(),
+                                        contentDescription = null,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                    )
+                                }
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.45f))
+                            )
+                        }
+
                         // Top 35mm filmstrip sprocket perforations
                         FilmstripPerforations(
                             modifier = Modifier
@@ -1560,19 +1674,57 @@ fun VideoTrackLane(
                                             )
                                         }
                                     }
+                                    if (clip.hasCrop) {
+                                        Surface(
+                                            shape = RoundedCornerShape(2.dp),
+                                            color = Color(0xCC0EA5E9)
+                                        ) {
+                                            Text(
+                                                text = "CROP",
+                                                color = Color.White,
+                                                fontSize = 7.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 3.dp)
+                                            )
+                                        }
+                                    }
+                                    if (clip.resizeWidth > 0 && clip.resizeHeight > 0) {
+                                        Surface(
+                                            shape = RoundedCornerShape(2.dp),
+                                            color = Color(0xCC6366F1)
+                                        ) {
+                                            Text(
+                                                text = "${clip.resizeWidth}×${clip.resizeHeight}",
+                                                color = Color.White,
+                                                fontSize = 7.sp,
+                                                fontFamily = FontFamily.Monospace,
+                                                modifier = Modifier.padding(horizontal = 3.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
 
                             // Transition badge: clickable to configure transition or drop target for dragged transition
                             Surface(
                                 shape = CircleShape,
-                                color = if (draggingTransition != null) AccentPink else if (clip.transitionIn != TransitionType.NONE) TrackTransitionColor else Color.Black.copy(alpha = 0.5f),
+                                color = when {
+                                    isHoveredIntersection -> AccentEmerald
+                                    draggingTransition != null -> AccentPink
+                                    clip.transitionIn != TransitionType.NONE -> TrackTransitionColor
+                                    else -> Color.Black.copy(alpha = 0.5f)
+                                },
                                 border = androidx.compose.foundation.BorderStroke(
                                     if (draggingTransition != null) 2.dp else 1.dp,
-                                    if (draggingTransition != null) Color.White else if (clip.transitionIn != TransitionType.NONE) Color.White else Color.Gray
+                                    if (draggingTransition != null || clip.transitionIn != TransitionType.NONE) Color.White else Color.Gray
                                 ),
                                 modifier = Modifier
                                     .size(if (draggingTransition != null) 24.dp else 20.dp)
+                                    .onGloballyPositioned { coords ->
+                                        if (draggingTransition == null) {
+                                            onReportTransitionSeamBounds(clip.id, coords.boundsInRoot())
+                                        }
+                                    }
                                     .clickable {
                                         if (draggingTransition != null) {
                                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -2463,6 +2615,55 @@ fun ShapeTrackLane(
                         fontFamily = FontFamily.Monospace
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun ImageOverlayTrackLane(
+    imageOverlays: List<ImageOverlay>,
+    selectedImageOverlayId: String?,
+    msToDp: (Long) -> Dp,
+    onSelectImageOverlay: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .background(Color(0xFF0E1824))
+            .border(1.dp, Color(0xFF1E3A5F))
+    ) {
+        imageOverlays.forEach { overlay ->
+            val startDp = msToDp(overlay.timelineStartMs)
+            val widthDp = msToDp(overlay.durationMs).coerceAtLeast(44.dp)
+            val isSelected = overlay.id == selectedImageOverlayId
+
+            Box(
+                modifier = Modifier
+                    .offset(x = startDp)
+                    .width(widthDp)
+                    .fillMaxHeight()
+                    .padding(vertical = 2.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xFF0369A1))
+                    .border(
+                        width = if (isSelected) 2.dp else 1.dp,
+                        color = if (isSelected) AccentCyan else Color(0xFF38BDF8),
+                        shape = RoundedCornerShape(6.dp)
+                    )
+                    .clickable { onSelectImageOverlay(overlay.id) }
+                    .padding(horizontal = 6.dp)
+                    .testTag("image_overlay_item_${overlay.id}"),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Text(
+                    text = "🖼 ${overlay.name}",
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }

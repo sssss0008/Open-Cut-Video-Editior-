@@ -95,11 +95,14 @@ import com.example.data.cloud.CloudProject
 import com.example.data.cloud.CloudSyncRepository
 import com.example.data.cloud.CreatorAnalytics
 import com.example.data.db.ProjectEntity
+import com.example.data.db.TimelineSerializer
 import com.example.ui.theme.AccentCyan
 import com.example.ui.theme.AccentPink
 import com.example.ui.theme.StudioCardDark
 import com.example.ui.theme.StudioDarkBg
 import com.example.ui.theme.StudioSurfaceDark
+import com.example.util.AppStorageBreakdown
+import com.example.util.StudioExportUtilities
 import com.example.viewmodel.EditorUiState
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -187,18 +190,21 @@ class CloudAccountViewModel(
             _syncMessage.value = null
             var syncedCount = 0
             for (proj in projects) {
+                val parsedClipCount = runCatching {
+                    TimelineSerializer.deserialize(proj.timelineDataJson).clips.size.toLong()
+                }.getOrDefault(proj.clipCount.toLong())
                 val res = repository.syncProjectToCloud(
                     userId = currentUserId,
                     projectId = proj.id,
                     title = proj.title,
                     aspectRatio = proj.aspectRatioName,
-                    durationMs = proj.lastPlayheadPositionMs.coerceAtLeast(15000L),
-                    clipCount = 4L,
+                    durationMs = proj.durationMs.coerceAtLeast(proj.lastPlayheadPositionMs),
+                    clipCount = parsedClipCount,
                     activeFilterPreset = favoriteFilterPreset
                 )
                 if (res.isSuccess) syncedCount++
             }
-            val storageKb = (projects.size * 420L + exportedVideosCount * 1250L).coerceAtLeast(128L)
+            val storageKb = (projects.sumOf { it.timelineDataJson.length.toLong() } / 1024L + exportedVideosCount * 128L).coerceAtLeast(16L)
             val analyticsRes = repository.syncAnalyticsSummary(
                 userId = currentUserId,
                 displayName = displayName,
@@ -261,16 +267,18 @@ fun AccountAnalyticsScreen(
         }
     }
 
-    // Local Studio Analytics Metrics (always available, even when signed out)
+    // Local Studio Analytics Metrics (computed from real Room projects, rendered archive, and disk usage)
     val totalProjectsCount = projects.size
     val exportedCount = uiState.renderedVideos.size
     val activeClipCount = uiState.clips.size
-    val totalDurationSec = ((uiState.totalDurationMs.coerceAtLeast(15000L) * totalProjectsCount.coerceAtLeast(1)) / 1000L)
+    val summedProjectDurationMs = projects.sumOf { it.durationMs }
+    val totalDurationSec = (if (summedProjectDurationMs > 0L) summedProjectDurationMs else uiState.totalDurationMs) / 1000L
     val favoriteFilter = uiState.selectedClip?.filter?.displayName
         ?.takeIf { it != "Original" }
         ?: uiState.clips.firstOrNull { it.filter.displayName != "Original" }?.filter?.displayName
-        ?: "Teal & Orange"
-    val estimatedLocalStorageMb = (totalProjectsCount * 18 + exportedCount * 42 + activeClipCount * 6).coerceAtLeast(24)
+        ?: "Original"
+    val actualStorageBytes = uiState.storageUsageBytes
+    val actualStorageMb = actualStorageBytes / (1024f * 1024f)
 
     Scaffold(
         topBar = {
@@ -493,7 +501,7 @@ fun AccountAnalyticsScreen(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "+28% Efficiency",
+                                    text = "${projects.size + exportedCount} Actions",
                                     color = Color(0xFF10B981),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold
@@ -501,17 +509,11 @@ fun AccountAnalyticsScreen(
                             }
                         }
 
-                        // Custom Compose Canvas Bar Chart
-                        val dayLabels = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-                        val barValues = remember(totalProjectsCount, exportedCount, activeClipCount) {
-                            listOf(
-                                0.42f,
-                                0.58f,
-                                0.51f,
-                                0.76f,
-                                0.68f,
-                                0.88f,
-                                ((totalProjectsCount * 0.15f + exportedCount * 0.2f + 0.55f).coerceIn(0.45f, 1.0f))
+                        // Real 7-Day Activity Bar Chart computed from actual Room & Export timestamps
+                        val (dayLabels, barValues) = remember(projects, uiState.renderedVideos) {
+                            StudioExportUtilities.computeWeeklyActivityBuckets(
+                                projectUpdatedTimestamps = projects.map { it.updatedAt },
+                                renderedCreatedTimestamps = uiState.renderedVideos.map { it.createdAt }
                             )
                         }
 
@@ -595,12 +597,12 @@ fun AccountAnalyticsScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = "Room Local DB & Proxy Cache",
+                                text = "Actual App Media & Cache Usage",
                                 color = Color.LightGray,
                                 fontSize = 11.sp
                             )
                             Text(
-                                text = "$estimatedLocalStorageMb MB / 2,048 MB",
+                                text = AppStorageBreakdown.formatBytes(actualStorageBytes),
                                 color = AccentCyan,
                                 fontSize = 11.sp,
                                 fontFamily = FontFamily.Monospace,
@@ -609,7 +611,7 @@ fun AccountAnalyticsScreen(
                         }
 
                         LinearProgressIndicator(
-                            progress = { (estimatedLocalStorageMb / 2048f).coerceIn(0.04f, 1f) },
+                            progress = { (actualStorageMb / 2048f).coerceIn(0.02f, 1f) },
                             color = AccentCyan,
                             trackColor = Color(0xFF1E293B),
                             modifier = Modifier

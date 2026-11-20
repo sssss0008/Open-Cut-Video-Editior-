@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.net.Uri
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -37,6 +38,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.HelpOutline
@@ -83,6 +85,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
@@ -93,12 +96,14 @@ import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.data.db.ProjectEntity
 import com.example.data.model.AspectRatio
+import com.example.data.model.ImportProgressState
 import com.example.ui.theme.AccentCyan
 import com.example.ui.theme.AccentEmerald
 import com.example.ui.theme.AccentPink
 import com.example.ui.theme.StudioCardDark
 import com.example.ui.theme.StudioDarkBg
 import com.example.ui.theme.StudioSurfaceDark
+import com.example.util.DeviceMediaImporter
 import com.example.viewmodel.VideoEditorViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -116,10 +121,20 @@ fun ProjectsDashboardScreen(
     onOpenDrawer: () -> Unit = {},
     onNavigateAccount: () -> Unit = {},
     onImportDeviceVideo: (uriString: String, name: String) -> Unit = { _, _ -> },
+    onImportMultipleVideos: ((List<Uri>) -> Unit)? = null,
+    importProgress: ImportProgressState = ImportProgressState(),
+    onCancelImport: () -> Unit = {},
+    onClearImportError: () -> Unit = {},
     onGenerateTestVideo: () -> Unit = {}
 ) {
+    val context = LocalContext.current
+    val prefs = remember(context) {
+        context.getSharedPreferences("opencut_prefs", android.content.Context.MODE_PRIVATE)
+    }
     var showNewProjectSheet by remember { mutableStateOf(false) }
-    var showEducationGuideDialog by remember { mutableStateOf(projects.isEmpty()) }
+    var showEducationGuideDialog by remember {
+        mutableStateOf(!prefs.getBoolean("has_seen_education_guide", false))
+    }
     var showImportSourceDialog by remember { mutableStateOf(false) }
     var projectToRename by remember { mutableStateOf<ProjectEntity?>(null) }
     var projectForVersionSnapshot by remember { mutableStateOf<ProjectEntity?>(null) }
@@ -129,11 +144,15 @@ fun ProjectsDashboardScreen(
     var showOnboardingBanner by remember { mutableStateOf(true) }
 
     val videoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri ->
-        if (uri != null) {
-            val fileName = uri.lastPathSegment?.split("/")?.lastOrNull() ?: "Device Video"
-            onImportDeviceVideo(uri.toString(), fileName)
+        contract = ActivityResultContracts.PickMultipleVisualMedia()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            if (onImportMultipleVideos != null) {
+                onImportMultipleVideos(uris)
+            } else {
+                val first = uris.first()
+                onImportDeviceVideo(first.toString(), DeviceMediaImporter.resolveFileName(context, first))
+            }
         }
     }
 
@@ -141,8 +160,12 @@ fun ProjectsDashboardScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) {
-            val fileName = uri.lastPathSegment?.split("/")?.lastOrNull() ?: "Device Video"
-            onImportDeviceVideo(uri.toString(), fileName)
+            if (onImportMultipleVideos != null) {
+                onImportMultipleVideos(listOf(uri))
+            } else {
+                val fileName = DeviceMediaImporter.resolveFileName(context, uri)
+                onImportDeviceVideo(uri.toString(), fileName)
+            }
         }
     }
 
@@ -257,6 +280,89 @@ fun ProjectsDashboardScreen(
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            if (importProgress.isImporting) {
+                item {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFF0E293B),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, AccentCyan),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("dashboard_import_progress_banner")
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Importing (${importProgress.currentIndex}/${importProgress.totalCount.coerceAtLeast(1)}): ${importProgress.currentFileName}",
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = importProgress.stageLabel.ifBlank { "Copying to project workspace..." },
+                                        color = AccentCyan,
+                                        fontSize = 10.sp
+                                    )
+                                }
+                                TextButton(
+                                    onClick = onCancelImport,
+                                    modifier = Modifier.testTag("dashboard_cancel_import_button")
+                                ) {
+                                    Text("Cancel", color = Color(0xFFFF8A80), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            LinearProgressIndicator(
+                                progress = { importProgress.progress.coerceIn(0f, 1f) },
+                                color = AccentCyan,
+                                trackColor = Color(0xFF1F2937),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 6.dp)
+                                    .height(5.dp)
+                                    .clip(RoundedCornerShape(3.dp))
+                            )
+                        }
+                    }
+                }
+            } else if (!importProgress.errorMessage.isNullOrBlank()) {
+                item {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFF450A0A),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("dashboard_import_error_banner")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.ErrorOutline, contentDescription = "Import Error", tint = Color(0xFFFCA5A5), modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = importProgress.errorMessage,
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(onClick = onClearImportError, modifier = Modifier.size(32.dp)) {
+                                Icon(Icons.Default.Close, contentDescription = "Dismiss Error", tint = Color.LightGray, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
+                }
+            }
+
             if (showOnboardingBanner) {
                 item {
                     Spacer(modifier = Modifier.height(4.dp))
@@ -591,7 +697,12 @@ fun ProjectsDashboardScreen(
     }
 
     if (showEducationGuideDialog) {
-        AppEducationGuideDialog(onDismiss = { showEducationGuideDialog = false })
+        AppEducationGuideDialog(
+            onDismiss = {
+                prefs.edit().putBoolean("has_seen_education_guide", true).apply()
+                showEducationGuideDialog = false
+            }
+        )
     }
 
     if (showNewProjectSheet) {
@@ -1748,7 +1859,7 @@ fun ImportSourceDialog(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text("Pick from Gallery / Photos", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                            Text("Use Android Photo Picker to select videos", color = Color.Gray, fontSize = 11.sp)
+                            Text("Select one or multiple videos via Photo Picker", color = Color.Gray, fontSize = 11.sp)
                         }
                     }
                 }
@@ -1771,7 +1882,7 @@ fun ImportSourceDialog(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text("Browse Device Files & Downloads", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                            Text("Select MP4, MKV, MOV from any folder", color = Color.Gray, fontSize = 11.sp)
+                            Text("Select MP4, MOV, MKV, WebM from any folder", color = Color.Gray, fontSize = 11.sp)
                         }
                     }
                 }
